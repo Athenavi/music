@@ -1,0 +1,153 @@
+.playlist-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.edit-control {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.edit-button {
+    padding: 8px 16px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s ease;
+}
+
+.edit-button.active {
+    background-color: #0056b3;
+}
+
+.edit-hint {
+    margin-left: 12px;
+    color: #666;
+    font-size: 14px;
+}
+
+.song-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.song-item {
+    padding: 12px;
+    border-bottom: 1px solid #eee;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    transition: background-color 0.2s ease;
+}
+
+.song-item.dragging {
+    background-color: #f0f0f0;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.song-content {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.drag-handle {
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    margin-right: 12px;
+    color: #666;
+    cursor: grab;
+}
+
+.song-info {
+    flex: 1;
+    text-decoration: none;
+    color: #333;
+}
+
+.song-info h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.song-info p {
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: #666;
+}
+
+.delete-button {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.delete-button:hover {
+    color: #ff4d4f;
+}
+
+/* CurrentList.css */
+.drag-handle {
+    touch-action: none; /* 修复移动端拖拽滚动问题 */
+}
+
+.song-item {
+    transition: transform 0.2s ease; /* 添加平滑过渡 */
+}
+
+.song-list {
+    overflow: visible !important; /* 修复拖拽时列表截断问题 */
+}
+
+.edit-button {
+    background: none;
+    border: none;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.edit-icon {
+    transition: transform 0.2s ease;
+}
+
+.edit-button:hover .edit-icon {
+    transform: scale(1.1);
+}
+
+/* 修复拖拽占位符样式 */
+.song-list::after {
+    content: '';
+    display: block;
+    height: 1px;
+    background: transparent;
+}
+
+.song-item {
+    display: block;
+    margin-bottom: 10px;
+}
+
+.song-content {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}

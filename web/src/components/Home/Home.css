@@ -1,0 +1,402 @@
+body {
+    font-family: 'Arial', sans-serif;
+    background-color: transparent;
+    position: relative;
+    margin: 0;
+    padding: 0;
+}
+
+body::before {
+    content: "";
+    background-image: url("https://7trees.cn/zyImg/test/bg.jpg");
+    background-size: cover;
+    background-attachment: fixed;
+    filter: grayscale(55%);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: -1;
+}
+
+.flex-container {
+    padding-top: 20px;
+    display: flex;
+    align-content: center;
+}
+
+.songBtn button {
+    margin-top: 55px;
+    margin-left: 22px;
+    background: linear-gradient(135deg, #ff375a, #ff5e78);
+    color: #fff;
+    border: none;
+    padding: 8px 20px;
+    font-size: 14px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.songBtn button:hover {
+    background: linear-gradient(135deg, #ff375a, #ff5e78);
+}
+
+.cr {
+    visibility: hidden;
+}
+
+.active {
+    color: greenyellow;
+    font-size: 22px;
+}
+
+.rotating {
+    animation: rotation 48s infinite linear;
+}
+
+@keyframes rotation {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.song {
+    margin-top: 30px;
+    background-color: white;
+    border: 20px solid #242424;
+    padding: 10px;
+    border-radius: 50%;
+    box-shadow: 20px 20px 50px rgba(0, 0, 0, 0.1);
+    width: 40%;
+    height: auto;
+    text-align: center;
+}
+
+.song img {
+    border-radius: 50%;
+    width: 100%;
+    max-width: 550px;
+}
+
+.song_title {
+    margin-left: 155px;
+    color: #ff375a;
+}
+
+.song_artist {
+    color: #ff5e78;
+    margin-left: 180px;
+    margin-bottom: 160px;
+    font-style: italic;
+}
+
+.lrc_div {
+    margin-top: 75px;
+    margin-left: -50px;
+    width: 30%;
+    height: 325px;
+    overflow-y: scroll;
+}
+
+.audio-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: blue;
+}
+
+.button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: inherit;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 5px;
+    background-color: #363636;
+    cursor: pointer;
+}
+
+.secondMenu {
+    background-color: #c20c0c;
+    padding: 10px 20px;
+    text-align: center;
+    font-size: 12px;
+}
+
+.secondMenu a {
+    color: white;
+    padding: 12px 20px;
+    margin: 0 10px;
+    text-decoration: none;
+    font-weight: bold;
+    border-radius: 5px;
+    transition: background-color 0.3s;
+}
+
+.secondMenu a:hover {
+    background-color: #9b0909;
+}
+
+.player {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    padding: 10px 20px;
+    box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    background: transparent;
+    border-radius: 10px;
+}
+
+.player audio {
+    width: 75%;
+    outline: none;
+}
+
+.player audio::-webkit-media-controls-panel {
+    background-color: #ff5e78;
+}
+
+.player audio::-webkit-media-controls-play-button,
+.player audio::-webkit-media-controls-pause-button {
+    color: darkslateblue;
+    background: url('https://7trees.cn/zyImg/qks2862/play.png') no-repeat 0 0;
+}
+
+.player audio::-webkit-media-controls-timeline {
+    background: linear-gradient(to right, transparent 0%, burlywood 30%);
+    border-radius: 70px;
+}
+
+.player audio::-webkit-media-controls-current-time-display,
+.player audio::-webkit-media-controls-time-remaining-display {
+    color: black;
+    font-size: 14px;
+}
+
+.player audio::-webkit-media-controls-volume-slider,
+.player audio::-webkit-media-controls-mute-button {
+    display: none;
+}
+
+.func_visable {
+    margin-top: 10px;
+    margin-left: 110px;
+}
+
+.func_visable button {
+    margin-top: 10px;
+    font-size: 22px;
+    border: transparent;
+}
+
+::-webkit-scrollbar {
+    width: 0px;
+    height: 0px;
+}
+
+::-webkit-scrollbar-track {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.remove_btn button {
+    /* 这里应该有具体的样式定义，如果为空，请添加或删除此行 */
+}
+
+.list_li {
+    list-style-type: none;
+}
+
+:root {
+    --primary-color: #6c5ce7;
+    --secondary-color: #a8a5e6;
+    --background: #1a1a2e;
+    --glass-bg: rgba(255, 255, 255, 0.05);
+    --text-light: #ffffff;
+    --text-dark: #2d3336;
+}
+
+.music-app {
+    min-height: 100vh;
+    background: linear-gradient(135deg, var(--background) 0%, #16213e 100%);
+    color: var(--text-light);
+    font-family: 'Segoe UI', sans-serif;
+}
+
+.app-container {
+    display: grid;
+    grid-template-columns: 300px 1fr 300px;
+    gap: 20px;
+    padding: 2rem;
+    min-height: calc(100vh - 60px);
+    transition: width 0.3s ease-in-out;
+}
+
+.player-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    padding: 2rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.album-art-container {
+    position: relative;
+    width: 100%;
+    border-radius: 50%;
+    overflow: hidden;
+    margin-bottom: 2rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.album-art {
+    width: 100%;
+    height: auto;
+    border-radius: 50%;
+    transition: transform 0.3s ease;
+}
+
+.album-art.playing {
+    animation: rotate 20s linear infinite;
+}
+
+.art-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(45deg, rgba(108, 92, 231, 0.3), transparent);
+}
+
+.control-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.icon-btn {
+    background: none;
+    border: none;
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: var(--glass-bg);
+    backdrop-filter: blur(5px);
+}
+
+.icon-btn:hover {
+    background: var(--primary-color);
+    transform: scale(1.1);
+}
+
+.icon-btn .icon {
+    color: var(--text-light);
+    font-size: 1.2rem;
+}
+
+.lyrics-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    padding: 2rem;
+    overflow: hidden;
+}
+
+.lyrics-container {
+    height: 70vh;
+    overflow-y: auto;
+    padding-right: 1rem;
+}
+
+.playlist-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    padding: 2rem;
+}
+
+.playlist-container {
+    height: 70vh;
+    overflow-y: auto;
+}
+
+.app-footer {
+    text-align: center;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.2);
+    color: rgba(255, 255, 255, 0.7);
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+
+/* 关闭按钮样式 */
+.close-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 24px;
+    cursor: pointer;
+    transition: opacity 0.3s;
+}
+
+.close-btn:hover {
+    opacity: 0.8;
+}
+
+
+/* 响应式设计 */
+@media (max-width: 668px) {
+    .app-container {
+        grid-template-columns: 1fr;
+        padding: 1rem;
+    }
+
+    .player-panel {
+        max-width: 300px;
+        margin: 0 auto;
+    }
+
+    .lyrics-panel {
+        display: none;
+    }
+
+    #lrc_div.active,
+    #other_div.active {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 100;
+        background: var(--background);
+    }
+}

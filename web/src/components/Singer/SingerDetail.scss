@@ -1,0 +1,295 @@
+// 变量定义
+$primary-color: #2c3e50;
+$secondary-color: #3498db;
+$hover-color: #2980b9;
+$background-color: #f5f6fa;
+$card-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+
+.singer-detail-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+
+  .detail-header {
+    margin-bottom: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+
+    .artist-title {
+      font-size: 2.5rem;
+      color: $primary-color;
+      margin: 0;
+    }
+
+    .stats-badge {
+      background: rgba($secondary-color, 0.1);
+      padding: 0.5rem 1rem;
+      border-radius: 2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+
+      .icon {
+        color: $secondary-color;
+      }
+
+      span {
+        color: $primary-color;
+        font-weight: 500;
+      }
+    }
+  }
+
+  .grid-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+
+    .grid-item {
+      background: white;
+      border-radius: 12px;
+      transition: transform 0.2s;
+      overflow: hidden;
+      box-shadow: $card-shadow;
+
+      &:hover {
+        transform: translateY(-4px);
+      }
+
+      // 歌手卡片样式
+      .artist-card {
+        display: block;
+        text-decoration: none;
+        color: inherit;
+
+        .image-wrapper {
+          position: relative;
+          padding-top: 100%;
+
+          .artist-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+
+          .hover-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(black, 0.3);
+            opacity: 0;
+            transition: opacity 0.2s;
+          }
+        }
+
+        &:hover .hover-overlay {
+          opacity: 1;
+        }
+
+        .artist-name {
+          margin: 1rem;
+          font-size: 1.1rem;
+          color: $primary-color;
+        }
+
+        .artist-type {
+          margin: 0 1rem 1rem;
+          color: lighten($primary-color, 30%);
+          font-size: 0.9rem;
+        }
+      }
+
+      // 歌曲卡片样式
+      .song-card {
+        .song-image-wrapper {
+          position: relative;
+          padding-top: 100%;
+          background: #f0f0f0;
+
+          .song-cover {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+
+          .song-controls {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(black, 0.7));
+            padding: 1rem;
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            opacity: 0;
+            transition: opacity 0.2s;
+
+            .control-button {
+              background: rgba(white, 0.9);
+              border: none;
+              width: 2.5rem;
+              height: 2.5rem;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              cursor: pointer;
+              transition: all 0.2s;
+
+              &:hover {
+                background: white;
+                transform: scale(1.1);
+              }
+
+              &.add {
+                color: $secondary-color;
+              }
+            }
+
+            .play-button {
+              background: $secondary-color;
+              color: white;
+              padding: 0.5rem 1.5rem;
+              border-radius: 2rem;
+              text-decoration: none;
+              font-weight: 500;
+              transition: background 0.2s;
+
+              &:hover {
+                background: $hover-color;
+              }
+            }
+          }
+        }
+
+        &:hover .song-controls {
+          opacity: 1;
+        }
+
+        .song-info {
+          padding: 1rem;
+
+          .song-title {
+            color: $primary-color;
+            text-decoration: none;
+            font-weight: 500;
+            display: block;
+            margin-bottom: 0.5rem;
+
+            &:hover {
+              color: $secondary-color;
+            }
+          }
+
+          .song-actions {
+            display: flex;
+            gap: 0.5rem;
+
+            .action-button {
+              border: none;
+              background: none;
+              width: 2rem;
+              height: 2rem;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              cursor: pointer;
+              transition: all 0.2s;
+
+              &:hover {
+                background: rgba($secondary-color, 0.1);
+                color: $secondary-color;
+              }
+
+              &.like {
+                color: #e74c3c;
+
+                &:hover {
+                  background: rgba(#e74c3c, 0.1);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  .load-more-container {
+    text-align: center;
+    margin: 2rem 0;
+
+    .load-more-button {
+      background: $secondary-color;
+      color: white;
+      border: none;
+      padding: 0.8rem 2rem;
+      border-radius: 2rem;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+
+      &:hover {
+        background: $hover-color;
+      }
+    }
+
+    .end-hint {
+      color: lighten($primary-color, 30%);
+      font-style: italic;
+    }
+  }
+
+  .loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    color: $primary-color;
+
+    .loading-spinner {
+      width: 3rem;
+      height: 3rem;
+      border: 3px solid rgba($secondary-color, 0.2);
+      border-top-color: $secondary-color;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+// 响应式设计
+@media (max-width: 768px) {
+  .singer-detail-container {
+    padding: 1rem;
+
+    .detail-header {
+      flex-direction: column;
+      align-items: flex-start;
+
+      .artist-title {
+        font-size: 2rem;
+      }
+    }
+
+    .grid-container {
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    }
+  }
+}
