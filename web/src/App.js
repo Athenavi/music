@@ -12,8 +12,7 @@ import API_URL from "./config";
 import Logout from "./components/Login/Logout";
 import Singer from "./components/Singer/Singer";
 import SearchPage from "./components/search/search";
-import {likeThisSong, shareThisSong} from "./components/func/songMenu";
-import CurrentList from "./components/CurrentList/CurrentList";
+import {likeThisSong} from "./components/func/songMenu";
 
 function App() {
     const [token, setToken] = useState(localStorage.getItem('token') || null);
@@ -172,6 +171,35 @@ function App() {
         setIsNavExpanded(!isNavExpanded);
     };
 
+    const handleSong = (page) => {
+        const currentPlaylist = JSON.parse(localStorage.getItem('currentPlaylist')) || {播放列表: []};
+        const playlist = currentPlaylist['播放列表'];
+        const currentIndex = playlist.findIndex(item => item.id === musicId);
+
+        if (currentIndex !== -1) {
+            let newIndex = currentIndex + page;
+
+            // 检查新索引是否在有效范围内
+            if (newIndex >= 0 && newIndex < playlist.length) {
+                const newMusicId = playlist[newIndex].id;
+                setMusicId(newMusicId);
+                audioRef.current.pause();
+                audioRef.current.src = API_URL + `/music/${newMusicId}.mp3`;
+
+                audioRef.current.addEventListener('canplaythrough', () => {
+                    audioRef.current.play().then(() => {
+                        setPlaying(true);
+                    });
+                }, {once: true}); // 只监听一次，避免多次添加事件监听器
+            } else if (newIndex < 0) {
+                alert("已经是第一首歌曲");
+            } else {
+                alert("已经是最后一首歌曲");
+            }
+        }
+    };
+
+
     return (
         <Router>
             <nav className={isNavExpanded ? "expanded" : "collapsed"}>
@@ -219,14 +247,15 @@ function App() {
                     </div>
 
                     <div className="controls">
-                        <button className="icon-button">◀◁</button>
+                        <button className="icon-button" onClick={() => handleSong(-1)}>◀◁</button>
                         <button
                             className="play-pause"
                             onClick={togglePlay}
                         >
                             {playing ? '⏸' : '▶'}
                         </button>
-                        <button className="icon-button" onClick={handleNextSong}>▷▶</button>
+                        <button className="icon-button" onClick={() => handleSong(1)}>▷▶
+                        </button>
                         <div className="progress-container">
                             <span className="time">{formatTime(currentTime)}</span>
                             <input
