@@ -55,6 +55,7 @@ def get_general_conf():
 
 
 domain, sitename, API_URL = get_general_conf()
+print(domain, sitename, API_URL)
 
 
 @app.route('/api/count_users', methods=['POST'])
