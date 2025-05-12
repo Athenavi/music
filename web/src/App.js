@@ -19,25 +19,45 @@ function App() {
     const [token, setToken] = useState(localStorage.getItem('token') || null);
     const audioRef = useRef(null);
     const [playing, setPlaying] = useState(false);
-    const [musicId, setMusicId] = useState("0");
+    const [musicId, setMusicId] = useState(localStorage.getItem('currentId') || "0");
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
-    const [volume, setVolume] = useState(1);
+    const [volume, setVolume] = useState(() => {
+        const savedVolume = localStorage.getItem('volume');
+        return savedVolume !== null ? parseFloat(savedVolume) : 1;
+    });
     const [isMuted, setIsMuted] = useState(false);
     const [isNavExpanded, setIsNavExpanded] = useState(false);
+    const musicIdRef = useRef(musicId);
 
+    // 同步最新musicId到ref
     useEffect(() => {
-        localStorage.setItem('token', token);
-    }, [token]);
+        musicIdRef.current = musicId;
+    }, [musicId]);
 
+    // 保存musicId到本地存储
+    useEffect(() => {
+        localStorage.setItem('currentId', musicId);
+    }, [musicId]);
+
+    // 初始化音频事件监听
     useEffect(() => {
         const audio = audioRef.current;
 
-        const updateTime = () => setCurrentTime(audio.currentTime);
+        const updateTime = () => {
+            const currentTime = audio.currentTime;
+            setCurrentTime(currentTime);
+            const progress = JSON.parse(localStorage.getItem('progress')) || {};
+            progress[musicIdRef.current] = currentTime;
+            localStorage.setItem('progress', JSON.stringify(progress));
+        };
+
         const updateDuration = () => setDuration(audio.duration);
         const updateVolume = () => {
-            setVolume(audio.volume);
+            const currentVolume = audio.volume;
+            setVolume(currentVolume);
             setIsMuted(audio.muted);
+            localStorage.setItem('volume', currentVolume.toString()); // 保存音量到本地存储
         };
 
         audio.addEventListener('timeupdate', updateTime);
@@ -50,6 +70,41 @@ function App() {
             audio.removeEventListener('volumechange', updateVolume);
         };
     }, []);
+
+    // 加载时恢复播放进度
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+
+        const handleLoadedMetadata = () => {
+            const progress = JSON.parse(localStorage.getItem('progress')) || {};
+            const savedTime = progress[musicId] || 0;
+            audio.currentTime = savedTime;
+        };
+
+        audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+        return () => audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+    }, [musicId]);
+
+    // 初始化音量
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+
+        // 确保从存储中获取有效值
+        const savedVolume = localStorage.getItem('volume');
+        const initialVolume = savedVolume !== null ?
+            Math.min(1, Math.max(0, parseFloat(savedVolume))) : 1;
+
+        // 等待元数据加载完成再设置
+        const handleLoadedMetadata = () => {
+            audio.volume = initialVolume;
+            setIsMuted(initialVolume === 0);
+        };
+
+        audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+        return () => audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+    }, [audioRef.current]);
 
     const handleNextSong = (nextMusicId) => {
         setMusicId(nextMusicId);
