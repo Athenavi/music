@@ -61,32 +61,29 @@ const Playlist = ({coverUrl, toggleVisable, likeThisSong, shareThisSong, playing
 function Home({playing, setPlaying, handleNextSong, token, audioRef}) {
     const location = useLocation();
     const searchParams = new URLSearchParams(location.search);
-    const [musicId, setMusicId] = useState(searchParams.get("id") || "0");
+
+    // 初始化musicId，优先使用URL参数，其次本地存储，最后默认0
+    const initialMusicId = () => {
+        const urlId = searchParams.get("id");
+        if (urlId !== null) return urlId;
+        const storedId = localStorage.getItem('currentId');
+        return storedId || "0";
+    };
+    const [musicId, setMusicId] = useState(initialMusicId);
     const [playlistId, setPlaylistId] = useState(searchParams.get("pid") || "0");
-    const [coverUrl, setCoverUrl] = useState(`${API_URL}/music_cover/${musicId}.png`);
+    const [coverUrl, setCoverUrl] = useState(`${API_URL}/music_cover/${initialMusicId()}.png`);
     const songElementRef = useRef(null);
 
     useEffect(() => {
-        setMusicId(searchParams.get("id") || "0");
-        setPlaylistId(searchParams.get("pid") || "0");
-        setCoverUrl(`${API_URL}/music_cover/${musicId}.png`);
-        localStorage.setItem('currentId', musicId);
-    }, [location]);
-
-    useEffect(() => {
-        if (playing) {
-            setCoverUrl(`${API_URL}/music_cover/${musicId}.png`);
-        }
-        const initialMusicId = searchParams.get("id") || localStorage.getItem('currentId') || "0";
-        if (initialMusicId === musicId) {
-            setCoverUrl(`${API_URL}/music_cover/${initialMusicId}.png`);
-        }
-        if (initialMusicId !== musicId) {
-            localStorage.setItem('currentId', musicId);
-            setCoverUrl(`${API_URL}/music_cover/${musicId}.png`);
-        }
-    }, [playing, musicId]);
-
+        const urlId = searchParams.get("id");
+        const pid = searchParams.get("pid") || "0";
+        const storedId = localStorage.getItem('currentId') || "0";
+        const newMusicId = urlId !== null ? urlId : storedId;
+        setMusicId(newMusicId);
+        setPlaylistId(pid);
+        setCoverUrl(`${API_URL}/music_cover/${newMusicId}.png`);
+        localStorage.setItem('currentId', newMusicId);
+    }, [location]); // 依赖location的变化
 
     const [showLyrics, setShowLyrics] = useState(true);
     const [showPlaylist, setShowPlaylist] = useState(true);
