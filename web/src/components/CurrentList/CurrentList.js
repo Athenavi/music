@@ -66,16 +66,10 @@ function CurrentList({pid, setMusicId, handleNextSong, toggleVisable}) {
         const newData = {...data, 播放列表: items};
         setData(newData);
         localStorage.setItem('currentPlaylist', JSON.stringify(newData));
-
-        // 强制重新渲染解决样式残留问题
-        setTimeout(() => {
-            const list = document.querySelector('.song-list');
-            if (list) list.style = '';
-        }, 10);
     };
 
     return (
-        <div className="playlist-container">
+        <>
             <div className="edit-control">
                 <button
                     onClick={() => setIsEditing(!isEditing)}
@@ -93,16 +87,13 @@ function CurrentList({pid, setMusicId, handleNextSong, toggleVisable}) {
 
             {data ? (
                 <DragDropContext onDragEnd={handleDragEnd}>
-                    <Droppable droppableId="songs">
+                    <Droppable droppableId="playlist">
                         {(provided) => (
                             <ul
                                 {...provided.droppableProps}
-                                ref={(el) => {
-                                    provided.innerRef(el);
-                                    // 修复移动端拖拽容器引用问题
-                                    if (el) el.style.minHeight = '10px';
-                                }}
+                                ref={provided.innerRef}
                                 className="song-list"
+                                style={{minHeight: 10}}
                             >
                                 {data.播放列表.map((item, index) => (
                                     <Draggable
@@ -118,19 +109,12 @@ function CurrentList({pid, setMusicId, handleNextSong, toggleVisable}) {
                                                 className={`song-item ${
                                                     snapshot.isDragging ? 'dragging' : ''
                                                 } ${isEditing ? 'editing' : ''}`}
-                                                style={{
-                                                    ...provided.draggableProps.style,
-                                                    // 修复拖拽时元素偏移问题
-                                                    transform: provided.draggableProps.style?.transform || 'none',
-                                                }}
                                             >
                                                 <div className="song-content">
                                                     {isEditing && (
                                                         <div
                                                             {...provided.dragHandleProps}
                                                             className="drag-handle"
-                                                            // 修复移动端触摸问题
-                                                            onTouchStart={(e) => e.stopPropagation()}
                                                         >
                                                             <MdDragIndicator size={20}/>
                                                         </div>
@@ -155,8 +139,8 @@ function CurrentList({pid, setMusicId, handleNextSong, toggleVisable}) {
                                                     {isEditing && (
                                                         <button
                                                             onClick={(e) => {
-                                                                e.stopPropagation(); // 修复事件冒泡问题
-                                                                handleRemove(item.id)
+                                                                e.stopPropagation();
+                                                                handleRemove(item.id);
                                                             }}
                                                             className="delete-button"
                                                         >
@@ -176,7 +160,7 @@ function CurrentList({pid, setMusicId, handleNextSong, toggleVisable}) {
             ) : (
                 <p>加载中...</p>
             )}
-        </div>
+        </>
     );
 }
 

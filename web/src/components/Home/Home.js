@@ -77,6 +77,14 @@ function Home({playing, setPlaying, handleNextSong, token, audioRef}) {
         if (playing) {
             setCoverUrl(`${API_URL}/music_cover/${musicId}.png`);
         }
+        const initialMusicId = searchParams.get("id") || localStorage.getItem('currentId') || "0";
+        if (initialMusicId === musicId) {
+            setCoverUrl(`${API_URL}/music_cover/${initialMusicId}.png`);
+        }
+        if (initialMusicId !== musicId) {
+            localStorage.setItem('currentId', musicId);
+            setCoverUrl(`${API_URL}/music_cover/${musicId}.png`);
+        }
     }, [playing, musicId]);
 
 
@@ -89,7 +97,7 @@ function Home({playing, setPlaying, handleNextSong, token, audioRef}) {
         switch (panel) {
             case 'lrc_div':
                 setShowLyrics(prev => !prev);
-                setPanelWidth(prev => prev === '55%' ? '75%' : '55%');
+                setPanelWidth(prev => prev === '55vw' ? '75vw' : '55vw');
                 break;
             case 'other_div':
                 setShowPlaylist(prev => !prev);

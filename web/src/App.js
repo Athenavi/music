@@ -12,6 +12,8 @@ import API_URL from "./config";
 import Logout from "./components/Login/Logout";
 import Singer from "./components/Singer/Singer";
 import SearchPage from "./components/search/search";
+import {likeThisSong, shareThisSong} from "./components/func/songMenu";
+import CurrentList from "./components/CurrentList/CurrentList";
 
 function App() {
     const [token, setToken] = useState(localStorage.getItem('token') || null);
@@ -119,7 +121,7 @@ function App() {
         <Router>
             <nav className={isNavExpanded ? "expanded" : "collapsed"}>
                 <Link to="/">
-                    <img src="https://7trees.cn/zyImg/qks2862/Athenavi.png" alt="Logo" className="logo"/>
+                    <img src="https://7trees.cn/favicon.ico" alt="Logo" className="logo"/>
                 </Link>
                 <Link to="/discover/playlists">发现音乐</Link>
                 {token ? (
@@ -162,17 +164,14 @@ function App() {
                     </div>
 
                     <div className="controls">
-                        <button className="icon-button">◁◁</button>
-                        <button className="icon-button">◀</button>
+                        <button className="icon-button">◀◁</button>
                         <button
                             className="play-pause"
                             onClick={togglePlay}
                         >
                             {playing ? '⏸' : '▶'}
                         </button>
-                        <button className="icon-button">▶</button>
-                        <button className="icon-button">▷▷</button>
-
+                        <button className="icon-button" onClick={handleNextSong}>▷▶</button>
                         <div className="progress-container">
                             <span className="time">{formatTime(currentTime)}</span>
                             <input
@@ -188,7 +187,7 @@ function App() {
                     </div>
 
                     <div className="extra-controls">
-                        <button className="icon-button">♥</button>
+                        <button className="icon-button" onClick={likeThisSong}>♥</button>
                         <div className="volume-control">
                             <button className="mute" onClick={toggleMute}>
                                 {isMuted ? '🔇' : volume > 0.5 ? '🔊' : '🔉'}
