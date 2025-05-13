@@ -106,57 +106,89 @@ function Home({playing, setPlaying, handleNextSong, token, audioRef}) {
 
 
     useEffect(() => {
+        if (!showLyrics) return;
+
+        const lyricsDiv = document.getElementById('lyrics');
         const audio = audioRef.current;
-        let lyricsDiv = document.getElementById('lyrics');
-        if (!lyricsDiv) return;  // 如果 lyricsDiv 不存在，直接返回
-        let lyricLines = lyricsDiv.getElementsByTagName('p');
-        let activeLine = null;
+        if (!lyricsDiv || !audio) return;
+
+        const parseLyricTime = (timeStr) => {
+            if (!timeStr) return 0;
+            const [main, milliseconds] = timeStr.split('.');
+            const [minutes, seconds] = main.split(':');
+            return parseFloat(minutes) * 60 + parseFloat(seconds) + parseFloat(`0.${milliseconds || 0}`);
+        };
+
+        let lyricLines = [];
+        let currentActiveIndex = -1;
+
+        const updateLyricLines = () => {
+            lyricLines = Array.from(lyricsDiv.getElementsByTagName('p'));
+        };
 
         const handleTimeUpdate = () => {
             const currentTime = audio.currentTime;
 
+            // 找到当前应高亮的行
+            let newActiveIndex = -1;
             for (let i = 0; i < lyricLines.length; i++) {
-                const lineId = lyricLines[i].id;
-                if (!lineId) {
-                    continue;  // 如果 id 不存在或者为 undefined，跳过当前循环
-                }
+                const line = lyricLines[i];
+                const timeStr = line.id?.split('_')[1];
+                if (!timeStr) continue;
 
-                const timeStr = lineId.split('_')[1];
                 const lineTime = parseLyricTime(timeStr);
 
+                // 当前时间超过本行时间，且下一行时间未到
                 if (currentTime >= lineTime) {
-                    if (activeLine) {
-                        activeLine.classList.remove('active');
+                    if (i === lyricLines.length - 1 || currentTime < parseLyricTime(lyricLines[i + 1].id.split('_')[1])) {
+                        newActiveIndex = i;
                     }
-                    activeLine = lyricLines[i];
-                    activeLine.classList.add('active');
                 } else {
                     break;
                 }
             }
 
-            if (activeLine) {
-                activeLine.scrollIntoView({behavior: "smooth", block: "center"});
+            // 只有当需要更新时才操作DOM
+            if (newActiveIndex !== currentActiveIndex) {
+                // 移除旧的高亮
+                if (currentActiveIndex !== -1) {
+                    lyricLines[currentActiveIndex].classList.remove('active');
+                }
+
+                // 应用新的高亮
+                if (newActiveIndex !== -1) {
+                    const activeLine = lyricLines[newActiveIndex];
+                    activeLine.classList.add('active');
+
+                    // 延迟滚动确保样式应用完成
+                    requestAnimationFrame(() => {
+                        activeLine.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center'
+                        });
+                    });
+                }
+
+                currentActiveIndex = newActiveIndex;
             }
         };
 
-        function parseLyricTime(timeStr) {
-            if (!timeStr) {
-                return 0;
-            }
-            const parts = timeStr.split(':');
-            const minutes = parseInt(parts[0], 10);
-            const seconds = parseFloat(parts[1]);
-            return minutes * 60 + seconds;
-        }
+        updateLyricLines();
+
+        const observer = new MutationObserver((mutations) => {
+            updateLyricLines();
+            currentActiveIndex = -1; // 重置高亮状态
+        });
 
         audio.addEventListener('timeupdate', handleTimeUpdate);
+        observer.observe(lyricsDiv, {childList: true, subtree: true});
 
-        // 在组件卸载时移除事件监听器
         return () => {
             audio.removeEventListener('timeupdate', handleTimeUpdate);
+            observer.disconnect();
         };
-    }, [musicId, playing, audioRef, showLyrics]);
+    }, [musicId, playing, showLyrics, audioRef]);
+
 
     return (
         <div className="music-app">
