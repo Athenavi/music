@@ -408,3 +408,67 @@ body::before {
     opacity: 1;
     transform: scale(1.05);
 }
+
+.lyrics-container {
+    overflow-y: auto;
+    height: 70vh;
+    scroll-behavior: smooth;
+    font-size: 1.2rem;
+    text-align: center;
+}
+
+/* 歌词容器 */
+.songLyric {
+    overflow-y: auto;
+    height: 70vh;
+    scroll-behavior: smooth;
+    text-align: center;
+    padding: 20px 0;
+}
+
+/* 基础歌词样式 */
+.songLyric p {
+    position: relative;
+    display: inline-block;
+    color: #666;
+    padding: 12px 20px;
+    margin: 8px 0;
+    line-height: 1.6;
+    opacity: 0.6;
+    transition: opacity 0.3s ease;
+}
+
+/* 激活状态 */
+.songLyric p.active {
+    opacity: 1;
+}
+
+/* 颜色渐变效果 */
+.songLyric p.active::after {
+    content: attr(data-text);
+    position: absolute;
+    top: 12px;
+    left: 20px;
+    width: calc(100% - 40px);
+    height: calc(100% - 24px);
+    color: transparent;
+    background: linear-gradient(90deg,
+    #ff6b6b 0%,
+    #ff8e8e 50%,
+    #ffaaaa 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    clip-path: polygon(0 0, 0 100%, 0 100%, 0 0);
+    animation: colorSlide var(--duration) linear forwards;
+    pointer-events: none;
+}
+
+@keyframes colorSlide {
+    from {
+        clip-path: polygon(0 0, 0 100%, 0 100%, 0 0);
+    }
+    to {
+        clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    }
+}

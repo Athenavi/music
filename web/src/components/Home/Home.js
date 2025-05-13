@@ -112,59 +112,80 @@ function Home({playing, setPlaying, handleNextSong, token, audioRef}) {
         const audio = audioRef.current;
         if (!lyricsDiv || !audio) return;
 
+        // 增强版时间解析函数
         const parseLyricTime = (timeStr) => {
             if (!timeStr) return 0;
-            const [main, milliseconds] = timeStr.split('.');
-            const [minutes, seconds] = main.split(':');
-            return parseFloat(minutes) * 60 + parseFloat(seconds) + parseFloat(`0.${milliseconds || 0}`);
+            try {
+                // 支持多种时间格式：[mm:ss.xx] 或 [mm:ss:xx]
+                const cleanStr = timeStr.replace(/(:|\.|-)/g, ':');
+                const [minutes, seconds, milliseconds = 0] = cleanStr.split(':').map(Number);
+                return minutes * 60 + seconds + milliseconds / 1000;
+            } catch {
+                return 0;
+            }
         };
 
+        // 滚动锁定处理
+        const handleScroll = (e) => {
+            if (lyricsDiv.contains(e.target)) {
+                e.stopPropagation();
+                if (e.cancelable) e.preventDefault();
+            }
+        };
+
+        // 事件监听优化
+        const events = ['wheel', 'touchstart', 'scroll'];
+        events.forEach(event =>
+            document.addEventListener(event, handleScroll, {passive: false})
+        );
+
+        // 歌词处理逻辑
         let lyricLines = [];
         let currentActiveIndex = -1;
+        let animationFrameId = null;
 
         const updateLyricLines = () => {
-            lyricLines = Array.from(lyricsDiv.getElementsByTagName('p'));
+            lyricLines = Array.from(lyricsDiv.querySelectorAll('p[id^="time_"]'));
+            currentActiveIndex = -1; // 重置高亮状态
         };
 
         const handleTimeUpdate = () => {
             const currentTime = audio.currentTime;
-
-            // 找到当前应高亮的行
             let newActiveIndex = -1;
-            for (let i = 0; i < lyricLines.length; i++) {
-                const line = lyricLines[i];
-                const timeStr = line.id?.split('_')[1];
-                if (!timeStr) continue;
 
+            // 逆向查找提高性能（假设歌词按时间顺序排列）
+            for (let i = lyricLines.length - 1; i >= 0; i--) {
+                const line = lyricLines[i];
+                const timeStr = line.id.split('_')[1];
                 const lineTime = parseLyricTime(timeStr);
 
-                // 当前时间超过本行时间，且下一行时间未到
                 if (currentTime >= lineTime) {
-                    if (i === lyricLines.length - 1 || currentTime < parseLyricTime(lyricLines[i + 1].id.split('_')[1])) {
+                    // 检查下一行时间（如果有）
+                    const nextLine = lyricLines[i + 1];
+                    const nextTime = nextLine ? parseLyricTime(nextLine.id.split('_')[1]) : Infinity;
+
+                    if (currentTime < nextTime) {
                         newActiveIndex = i;
+                        break;
                     }
-                } else {
-                    break;
                 }
             }
 
-            // 只有当需要更新时才操作DOM
             if (newActiveIndex !== currentActiveIndex) {
-                // 移除旧的高亮
-                if (currentActiveIndex !== -1) {
-                    lyricLines[currentActiveIndex].classList.remove('active');
-                }
+                // 使用classList批量操作
+                lyricLines.forEach(line => line.classList.remove('active'));
 
-                // 应用新的高亮
                 if (newActiveIndex !== -1) {
                     const activeLine = lyricLines[newActiveIndex];
                     activeLine.classList.add('active');
 
-                    // 延迟滚动确保样式应用完成
-                    requestAnimationFrame(() => {
+                    // 优化滚动逻辑
+                    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                    animationFrameId = requestAnimationFrame(() => {
                         activeLine.scrollIntoView({
                             behavior: 'smooth',
-                            block: 'center'
+                            block: 'center',
+                            inline: 'nearest'
                         });
                     });
                 }
@@ -173,19 +194,23 @@ function Home({playing, setPlaying, handleNextSong, token, audioRef}) {
             }
         };
 
+        // 初始化歌词行
         updateLyricLines();
-
-        const observer = new MutationObserver((mutations) => {
-            updateLyricLines();
-            currentActiveIndex = -1; // 重置高亮状态
-        });
-
-        audio.addEventListener('timeupdate', handleTimeUpdate);
+        const observer = new MutationObserver(updateLyricLines);
         observer.observe(lyricsDiv, {childList: true, subtree: true});
 
+        // 音频事件监听
+        audio.addEventListener('timeupdate', handleTimeUpdate);
+
         return () => {
+            // 清理操作
             audio.removeEventListener('timeupdate', handleTimeUpdate);
             observer.disconnect();
+            events.forEach(event =>
+                document.removeEventListener(event, handleScroll)
+            );
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            lyricLines.forEach(line => line.classList.remove('active'));
         };
     }, [musicId, playing, showLyrics, audioRef]);
 

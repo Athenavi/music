@@ -1,79 +1,102 @@
 import React, {useState, useEffect} from 'react';
 import API_URL from "../../config";
 
-
-function SongDetail({musicId, key}) {
-    const [songLyrics, setSongLyrics] = useState('');
+function SongDetail({musicId}) {
+    const [lyricsData, setLyricsData] = useState([]);
     const [musicName, setMusicName] = useState('');
     const [musicArtist, setMusicArtist] = useState('');
 
+    // 获取歌曲基本信息
     useEffect(() => {
         const fetchSongDetails = async () => {
             try {
-                const response = await fetch(API_URL + `/song/name?id=${musicId}`);
+                const response = await fetch(`${API_URL}/song/name?id=${musicId}`);
                 if (response.ok) {
                     const data = await response.json();
-                    const [id, song_name, artist] = data[0]; // 解构数据
+                    const [id, song_name, artist] = data[0];
                     setMusicName(song_name);
                     setMusicArtist(artist);
-                } else {
-                    console.error('Error fetching song details');
                 }
             } catch (error) {
                 console.error('Error fetching song details:', error);
             }
         };
 
-        if (musicId) {
-            fetchSongDetails();
-        }
+        if (musicId) fetchSongDetails();
     }, [musicId]);
 
+    // 获取并解析歌词
     useEffect(() => {
-        const fetchSongLyrics = async () => {
+        const fetchAndParseLyrics = async () => {
             try {
-                const response = await fetch(API_URL + `/api/lrc/${musicId}`);
+                const response = await fetch(`${API_URL}/api/lrc/${musicId}`);
                 if (response.ok) {
-                    const data = await response.text();
-                    const htmlContent = parseLrcToHtml(data);
-                    setSongLyrics(htmlContent);
-                } else {
-                    console.error('Error fetching song lyrics');
+                    const rawText = await response.text();
+                    const parsed = parseLyrics(rawText);
+                    setLyricsData(parsed);
                 }
             } catch (error) {
-                console.error('Error fetching song lyrics:', error);
+                console.error('Error fetching lyrics:', error);
             }
         };
 
-        if (musicId) {
-            fetchSongLyrics();
-        }
+        if (musicId) fetchAndParseLyrics();
     }, [musicId]);
 
-    const parseLrcToHtml = (lrcText) => {
-        const lines = lrcText.split('\n');
-        const formattedLines = lines.map(line => {
-            const parts = line.match(/\[(\d+:\d+\.\d+)\]/);
-            const text = line.split(']').pop();
-            if (parts && parts.length > 1) {
-                return `<p id="time_${parts[1]}">${text}</p>`;
-            }
-            return `<p>${text}</p>`;
-        });
-        return formattedLines.join('');
+    // 歌词解析函数
+    const parseLyrics = (rawText) => {
+        const lines = rawText.split('\n');
+        return lines.map((line, index) => {
+            const match = line.match(/\[(\d+:\d+\.\d+)\](.*)/);
+            if (!match) return null;
+
+            return {
+                time: match[1],
+                text: match[2].trim(),
+                nextTime: lines[index + 1]?.match(/\[(\d+:\d+\.\d+)\]/)?.[1]
+            };
+        }).filter(Boolean);
     };
 
+    // 时间转换函数
+    const toSeconds = (timeStr) => {
+        if (!timeStr) return 0;
+        const [minutes, rest] = timeStr.split(':');
+        const [seconds, milliseconds] = rest.split('.');
+        return parseInt(minutes) * 60 + parseInt(seconds) + parseInt(milliseconds) / 1000;
+    };
+
+    // 计算持续时间
+    const calculateDuration = (currentTime, nextTime) => {
+        const duration = toSeconds(nextTime) - toSeconds(currentTime);
+        return duration > 0 ? duration : 3; // 最小保持1秒
+    };
 
     return (
-        <>
-            <div key={key}>
+        <div className="songDetail">
+            <div className="song-header">
                 <h1 className="song_title">{musicName}</h1>
-                <span className='song_artist'>{musicArtist}</span>
+                <span className="song_artist">{musicArtist}</span>
             </div>
-            <div className="songDetail">
-                <div className="songLyric" id="lyrics" dangerouslySetInnerHTML={{__html: songLyrics}}></div>
+
+            <div className="songLyric" id="lyrics">
+                {lyricsData.map((line, index) => {
+                    const duration = calculateDuration(line.time, line.nextTime);
+                    const timeId = line.time.replace(/:/g, '-').replace('.', '-');
+
+                    return (
+                        <p
+                            key={index}
+                            id={`time_${timeId}`}
+                            data-text={line.text}
+                            style={{'--duration': `${duration}s`}}
+                        >
+                            {line.text}
+                        </p>
+                    );
+                })}
             </div>
-        </>
+        </div>
     );
 }
 
