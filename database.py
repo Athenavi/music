@@ -1,8 +1,10 @@
-import mysql.connector
 import configparser
 
+import mysql.connector
+import mysql.connector.pooling
 
-def get_db_connection():
+
+def get_db_connection(pool_name="mypool", pool_size=5):
     config = configparser.ConfigParser()
     try:
         config.read('config.ini', encoding='utf-8')
@@ -11,15 +13,17 @@ def get_db_connection():
 
     db_config = dict(config.items('database'))
 
-    zy_db = mysql.connector.connect(
+    # 创建连接池
+    db_pool = mysql.connector.pooling.MySQLConnectionPool(
+        pool_name=pool_name,
+        pool_size=pool_size,
         host=db_config['host'].strip("'"),
         port=int(db_config['port'].strip("'")),  # 将端口转换为整数类型，并去除单引号
         user=db_config['user'].strip("'"),
         password=db_config['password'].strip("'"),
         database=db_config['database'].strip("'")
     )
-    return zy_db
-
+    return db_pool
 
 def test_database_connection():
     try:

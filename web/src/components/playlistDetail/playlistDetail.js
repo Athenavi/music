@@ -1,5 +1,6 @@
 import React, {useState, useEffect} from 'react';
 import API_URL from '../../config';
+import './pd.css'
 import {Link, useLocation} from "react-router-dom";
 
 
@@ -79,8 +80,7 @@ const PlaylistDetail = ({setMusicId, pageType}) => {
     };
 
     return (
-        <div className="index-container" id='viewPlaylist'
-             style={{height: '80%', display: 'flex', flexDirection: 'column'}}>
+        <div className="index-container" id='viewPlaylist'>
             {data ? (
                 <>
                     <h1>{pageTitle}</h1>
@@ -88,32 +88,28 @@ const PlaylistDetail = ({setMusicId, pageType}) => {
                         className="cover_img"
                         src={`${API_URL}/music_cover/${playlistId}.png`}
                         alt="封面图片"
-                        style={{width: '18%', marginBottom: '5px'}}
                     />
                     <span>{formattedDate}</span>
-                    <ul style={{display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', width: '100%'}}>
+                    <ul>
                         {Object.entries(data).map(([key, value]) => (
-                            <li key={key} style={{
-                                display: 'flex',
-                                flexWrap: 'wrap',
-                                justifyContent: 'space-between',
-                                width: '100%'
-                            }}>
+                            <li key={key}>
                                 <h3>{key}</h3>
-                                <ol style={{display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between'}}>
+                                <ol>
                                     {value.slice(0, visibleItems).map((item) => (
-                                        <li key={item.id} className="list_li"
-                                            style={{width: '33%', marginBottom: '10px'}}>
-                                            <img
-                                                className="cover_img"
-                                                src={`${API_URL}/music_cover/${item.id}.png`}
-                                                alt="封面图片"
-                                                style={{width: '20%', margin: '3px'}}
-                                            />
-
-                                            <Link to={`/song?id=${item.id}`} onClick={() => {
-                                                setMusicId(item.id);
-                                            }}><p>{item.artist} - {item.title}</p></Link>
+                                        <li key={item.id} className="list_li">
+                                            <div className="list-item-content">
+                                                <img
+                                                    className="cover_img"
+                                                    src={`${API_URL}/music_cover/${item.id}.png`}
+                                                    alt="封面图片"
+                                                />
+                                                <Link to={`/song?id=${item.id}`} onClick={() => setMusicId(item.id)}>
+                                                    <div className="song-info">
+                                                        <h4>{item.title}</h4>
+                                                        <p>{item.artist}</p>
+                                                    </div>
+                                                </Link>
+                                            </div>
                                         </li>
                                     ))}
                                 </ol>

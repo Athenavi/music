@@ -7,7 +7,7 @@ from configparser import ConfigParser
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from io import BytesIO
-
+from flask_caching import Cache
 import bcrypt
 import mysql
 import requests
@@ -27,6 +27,7 @@ app = Flask(__name__)
 app.secret_key = 'your_secret_key'
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=3)
 CORS(app)
+cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})
 
 # 配置JWT
 app.config["JWT_SECRET_KEY"] = "super-secret"
@@ -84,7 +85,7 @@ def login():
     if username is None or password is None:
         return jsonify({"msg": "Missing username or password"}), 400
 
-    db = get_db_connection()
+    db = get_db_connection().get_connection()
     cursor = db.cursor()
 
     try:
@@ -272,7 +273,7 @@ def login_status():
 @app.route('/api/Recommend', methods=['GET'])
 def api_Recommend():
     pageType = request.args.get('pageType') or 'al'
-    db = get_db_connection()
+    db = get_db_connection().get_connection()
     cursor = db.cursor()
 
     # 定义一个函数来执行查询并返回结果
@@ -354,7 +355,7 @@ def api_singer():
 
 def get_all_singer():
     try:
-        db = get_db_connection()
+        db = get_db_connection().get_connection()
         cursor = db.cursor()
         query = "SELECT DISTINCT artists.ArtistID, artists.Name FROM songs INNER JOIN artists ON songs.ArtistID = artists.ArtistID;"
         cursor.execute(query)
@@ -374,7 +375,7 @@ def get_all_singer():
 def singer_detail(uid):
     if uid:
         try:
-            db = get_db_connection()
+            db = get_db_connection().get_connection()
             cursor = db.cursor()
             query = "SELECT songs.SongID, songs.Title, artists.Name FROM songs INNER JOIN artists ON songs.ArtistID = artists.ArtistID WHERE artists.ArtistID = {};".format(
                 uid)
@@ -395,23 +396,24 @@ def singer_detail(uid):
 
 
 @app.route('/api/Detail', methods=['GET'])
-def api_PlayListDetail(pid=0):
+@cache.cached(timeout=300, query_string=True)  # 使用缓存装饰器，并设置超时时间为300秒（5分钟）
+def api_PlayListDetail():
     pid = request.args.get('pid')
     pageType = request.args.get('pageType')
     if pid and pageType == 'pl':
         converted_playlist = {"歌曲列表": song_name(pid).json}
-        return converted_playlist
-    if pid and pageType == 'al':
+        return jsonify(converted_playlist)  # 使用 jsonify 返回 JSON 响应
+    elif pid and pageType == 'al':
         converted_playlist = {"歌曲列表": album_detail(pid).json}
-        return converted_playlist
+        return jsonify(converted_playlist)  # 使用 jsonify 返回 JSON 响应
     else:
-        return 'error', 404
+        return jsonify('error'), 404
 
 
 def album_detail(pid):
     if pid:
         try:
-            db = get_db_connection()
+            db = get_db_connection().get_connection()
             cursor = db.cursor()
             query = "SELECT songs.SongID, songs.Title, artists.Name FROM songs INNER JOIN artists ON songs.ArtistID = artists.ArtistID WHERE songs.AlbumID = {};".format(
                 pid)
@@ -435,7 +437,7 @@ def album_detail(pid):
 def list_by_uid(uid, list_id):
     if uid and list_id:
         try:
-            db = get_db_connection()
+            db = get_db_connection().get_connection()
             cursor = db.cursor()
             query = "SELECT * FROM `playlists` WHERE UserID={} and PlaylistID={};".format(uid, list_id)
             print(query)
@@ -459,7 +461,7 @@ def list_by_uid(uid, list_id):
 
 @app.route('/api/toplist', methods=['GET'])
 def api_topLists():
-    db = get_db_connection()
+    db = get_db_connection().get_connection()
     cursor = db.cursor()
     try:
         cursor.execute("SELECT TargetID FROM `hot` WHERE Type='SONG';")
@@ -480,7 +482,7 @@ def api_topLists():
 
 @app.route('/api/album', methods=['GET'])
 def api_album():
-    db = get_db_connection()
+    db = get_db_connection().get_connection()
     cursor = db.cursor()
     try:
         cursor.execute("SELECT AlbumID,Title,ReleaseDate FROM albums;")
@@ -509,7 +511,7 @@ def get_playlistInformation(pid=0):
     pid = request.args.get('pid')
     if pid:
         try:
-            db = get_db_connection()
+            db = get_db_connection().get_connection()
             cursor = db.cursor()
             query = "SELECT * FROM `playlists` WHERE PlaylistID={};".format(pid)
             print(query)
@@ -692,7 +694,7 @@ def file(id):
         return send_file(music_file_path, mimetype="audio/mp3")
 
     # 从数据库查找音乐文件路径
-    db = get_db_connection()  # 获取连接
+    db = get_db_connection().get_connection()  # 获取连接
     music_file_path_from_db = fetch_song_from_db(db, id)
 
     # 检查数据库返回的文件路径
@@ -843,7 +845,7 @@ def get_cover_from_file(id, covers_dir):
         return cover_file_path
 
     # 获取数据库连接
-    db = get_db_connection()
+    db = get_db_connection().get_connection()
     cursor = db.cursor()
     query = "SELECT FilePath FROM songs WHERE SongID = %s;"
 
@@ -878,7 +880,7 @@ def get_cover_from_file(id, covers_dir):
 
 @asynccontextmanager
 async def async_db_connection():
-    db = get_db_connection()
+    db = get_db_connection().get_connection()
     try:
         yield db
     finally:
@@ -892,7 +894,7 @@ def get_lrc(song_id):
             lrc_file_dir = os.path.join(base_dir, 'lrc', f'{song_id}.lrc')
             if os.path.exists(lrc_file_dir):
                 send_file(lrc_file_dir, mimetype='text/plain')
-            with get_db_connection() as db:  # 假设你有一个同步的数据库连接函数 db_connection
+            with get_db_connection().get_connection() as db:  # 假设你有一个同步的数据库连接函数 db_connection
                 cursor = db.cursor()
                 query = "SELECT Lyrics FROM songs WHERE SongID = %s;"
                 cursor.execute(query, (song_id,))
@@ -928,26 +930,9 @@ def save_lyrics(lyrics, song_id):
         f.write(lyrics)
 
 
-@app.route('/api/sidebar/')
-def get_sidebar():
-    dev_info = request.args.get('type', default='desket')
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    if dev_info == 'phone':
-        sidebar_file = os.path.join(base_dir, 'sidebar', 'phone.html')
-    else:
-        sidebar_file = os.path.join(base_dir, 'sidebar', 'desket.html')
-
-    try:
-        with open(sidebar_file, 'r', encoding='gbk') as file:
-            sidebar_content = file.read()
-        return jsonify({"sidebar": sidebar_content})
-    except FileNotFoundError:
-        return jsonify({"error": "Sidebar file not found"}), 404
-
-
 def song_name_list(ids):
     if ids:
-        db = get_db_connection()
+        db = get_db_connection().get_connection()
         cursor = db.cursor()
         try:
             print(ids)
@@ -973,7 +958,7 @@ def song_name(id=0, pid=0, uid=0):
         song_data = song_name_list(id)
         return jsonify(song_data)
     if pid:
-        db = get_db_connection()
+        db = get_db_connection().get_connection()
         cursor = db.cursor()
         try:
             query = "SELECT SongID FROM `playlist_songs` WHERE PlayListID = {}".format(
@@ -994,7 +979,7 @@ def song_name(id=0, pid=0, uid=0):
             cursor.close()
             db.close()
     if uid and not pid and not id:
-        db = get_db_connection()
+        db = get_db_connection().get_connection()
         cursor = db.cursor()
         try:
             query = "SELECT songs.SongID, songs.Title, artists.Name FROM songs JOIN artists ON songs.ArtistID = artists.ArtistID WHERE songs.ArtistID = {};".format(

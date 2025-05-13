@@ -1,6 +1,6 @@
 body {
     font-family: 'Arial', sans-serif;
-    background-color: transparent;
+    background-color: #16213e;
     position: relative;
     margin: 0;
     padding: 0;
@@ -8,7 +8,6 @@ body {
 
 body::before {
     content: "";
-    background-image: url("https://7trees.cn/zyImg/test/bg.jpg");
     background-size: cover;
     background-attachment: fixed;
     filter: grayscale(55%);
@@ -228,13 +227,15 @@ body::before {
 }
 
 .music-app {
-    min-height: 100vh;
+    max-height: 85vh;
+    padding-bottom: 65px;
     background: linear-gradient(135deg, var(--background) 0%, #16213e 100%);
     color: var(--text-light);
     font-family: 'Segoe UI', sans-serif;
 }
 
 .app-container {
+    max-height: 85vh;
     display: grid;
     grid-template-columns: 300px 1fr 300px;
     gap: 20px;
@@ -382,10 +383,6 @@ body::before {
     .player-panel {
         max-width: 300px;
         margin: 0 auto;
-    }
-
-    .lyrics-panel {
-        display: none;
     }
 
     #lrc_div.active,

@@ -1,8 +1,7 @@
 from database import get_db_connection
 
 # 连接数据库
-mydb = get_db_connection()
-
+mydb = get_db_connection().get_connection()
 mycursor = mydb.cursor()
 print("歌单歌曲批量存入")
 playlistId = int(input("请输入要修改的歌单id ："))

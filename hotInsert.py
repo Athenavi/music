@@ -1,9 +1,10 @@
-from database import get_database_connection
+from database import get_db_connection
 
 # 连接数据库
-mydb = get_database_connection()
+mydb_pool = get_db_connection()
+mydb = mydb_pool.get_connection()  # 从连接池中获取一个连接对象
+mycursor = mydb.cursor()  # 使用连接对象来创建游标
 
-mycursor = mydb.cursor()
 
 # 获取用户输入的起始值和结束值
 start_value = int(input("请输入起始值（正整数）："))

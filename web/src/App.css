@@ -406,15 +406,31 @@ input[type="range"]:hover::-webkit-slider-thumb {
 
 /* 响应式调整 */
 @media (max-width: 768px) {
-    .song-text {
-        display: none;
+    .player-panel {
+        width: 85vw;
+    }
+    .playlist-panel{
+        width: 85vw;
+    }
+
+    .lyrics-panel {
+        width: 88vw;
+        height: 10vw;
     }
 
     .controls {
         gap: 15px;
     }
 
-    .volume {
-        width: 80px;
+    .volume-control{
+        display: none;
+    }
+
+    .progress-container{
+        display: none;
+    }
+
+    #likeButton {
+        display: none;
     }
 }

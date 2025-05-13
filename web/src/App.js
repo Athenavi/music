@@ -239,11 +239,11 @@ function App() {
                 <div className="custom-player">
                     {/* 左侧歌曲信息 */}
                     <div className="song-info">
-                        <img
+                        <Link to="/song"><img
                             src={`${API_URL}/music_cover/${musicId}.png` || 'default-cover.jpg'}
                             className="album-cover"
                             alt="专辑封面"
-                        />
+                        /></Link>
                     </div>
 
                     <div className="controls">
@@ -271,7 +271,7 @@ function App() {
                     </div>
 
                     <div className="extra-controls">
-                        <button className="icon-button" onClick={likeThisSong}>♥</button>
+                        <button className="icon-button" id="likeButton" onClick={likeThisSong}>♥</button>
                         <div className="volume-control">
                             <button className="mute" onClick={toggleMute}>
                                 {isMuted ? '🔇' : volume > 0.5 ? '🔊' : '🔉'}

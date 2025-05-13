@@ -1,11 +1,11 @@
 import os
-from database import get_database_connection
+from database import get_db_connection
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, ID3NoHeaderError, TPE1, TIT2, TCON, TALB, TDRC, TRCK, TPOS, TCOM, COMM, USLT
 from datetime import datetime
 
 # 连接数据库
-db = get_database_connection()
+db = get_db_connection()
 cursor = db.cursor()
 
 
