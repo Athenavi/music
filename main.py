@@ -325,6 +325,7 @@ def api_search():
             search_api_url = f'{API_URL}search?keywords={kw}'
             response = requests.get(search_api_url, timeout=3)  # 设置超时时间为3秒
             data = response.json()
+            #print(data)
 
             # 将新获取的数据写入缓存文件
             os.makedirs(CACHE_DIR, exist_ok=True)  # 创建缓存目录（如果不存在）

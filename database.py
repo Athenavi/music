@@ -27,11 +27,12 @@ def get_db_connection(pool_name="mypool", pool_size=5):
 
 def test_database_connection():
     try:
-        db = get_db_connection()
-        db.close()
+        db = get_db_connection().get_connection()
         print("Database connection is successful.")
     except mysql.connector.Error as err:
         print(f"Failed to connect to the database: {err}")
+    finally:
+        db.close()
 
 
 if __name__ == '__main__':
