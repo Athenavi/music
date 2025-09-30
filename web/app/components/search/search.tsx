@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import API_URL from "../../config";
 import './SearchPage.css';
@@ -6,14 +6,23 @@ import { Link } from 'react-router-dom';
 import addToPlaylist from "../func/addToPlaylist";
 import { FiSearch, FiMusic, FiAlertCircle, FiLoader } from 'react-icons/fi';
 
-function SearchPage() {
-    const [keyword, setKeyword] = useState('');
-    const [results, setResults] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [visibleItems, setVisibleItems] = useState(20); // 初始可见项数
+// 定义歌曲的数据结构
+interface Song {
+    id: number;
+    name: string;
+    artists: { name: string }[];
+    album: { name: string, artist: { name: string } };
+    duration: number;
+}
 
-    const handleSearch = async () => {
+function SearchPage() {
+    const [keyword, setKeyword] = useState<string>('');
+    const [results, setResults] = useState<Song[]>([]);
+    const [loading, setLoading] = useState<boolean>(false);
+    const [error, setError] = useState<string>('');
+    const [visibleItems, setVisibleItems] = useState<number>(20); // 初始可见项数
+
+    const handleSearch = useCallback(async () => {
         if (!keyword) return;
 
         setLoading(true);
@@ -21,7 +30,7 @@ function SearchPage() {
         setResults([]); // 清空之前的结果
 
         try {
-            const response = await axios.get(`${API_URL}/api/search?keyword=${keyword}`);
+            const response = await axios.get<{ code: number, result: { songs: Song[] } }>(`${API_URL}/api/search?keyword=${keyword}`);
             if (response.data.code === 200) {
                 setResults(response.data.result.songs);
             } else {
@@ -32,11 +41,13 @@ function SearchPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [keyword]);
 
-    const loadMoreItems = () => {
+    const loadMoreItems = useCallback(() => {
         setVisibleItems(prev => Math.min(prev + 20, results.length)); // 每次加载20个
-    };
+    }, [results.length]);
+
+    const visibleSongs = useMemo(() => results.slice(0, visibleItems), [results, visibleItems]);
 
     return (
         <div className="search-container">
@@ -69,10 +80,10 @@ function SearchPage() {
                     </div>
                 )}
 
-                {results.length > 0 ? (
+                {visibleSongs.length > 0 ? (
                     <>
                         <div className="results-grid">
-                            {results.slice(0, visibleItems).map((song) => (
+                            {visibleSongs.map((song) => (
                                 <div key={song.id} className="song-card">
                                     <div className="album-art">
                                         <img
@@ -136,4 +147,4 @@ function SearchPage() {
     );
 }
 
-export default SearchPage;
+export default React.memo(SearchPage);

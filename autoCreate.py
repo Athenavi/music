@@ -4,9 +4,14 @@ from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, ID3NoHeaderError, TPE1, TIT2, TCON, TALB, TDRC, TRCK, TPOS, TCOM, COMM, USLT
 from datetime import datetime
 
-# 连接数据库
-db = get_db_connection()
-cursor = db.cursor()
+# 连接数据库 - 获取连接池
+db_pool = get_db_connection()
+
+# 从连接池获取一个连接
+db_connection = db_pool.get_connection()
+
+# 使用连接创建游标
+cursor = db_connection.cursor()
 
 
 def convert_id3_timestamp(year_tag):
@@ -54,6 +59,8 @@ def add_song_to_database(file_path):
     # 创作信息
     composer = id3v2.get("TCOM").text[0] if id3v2 and id3v2.get("TCOM") else None
     lyricist = id3v2.get("TEXT").text[0] if id3v2 and id3v2.get("TEXT") else None
+    if lyricist and len(lyricist) > 100:
+        lyricist = lyricist[:100]
 
     # 评论（优先获取英文评论）
     comments = None
@@ -83,7 +90,6 @@ def add_song_to_database(file_path):
     if not artist_id:
         cursor.execute("INSERT INTO artists (Name) VALUES (%s)", (artist,))
         artist_id = cursor.lastrowid
-        db.commit()
 
     cursor.execute("SELECT AlbumID FROM albums WHERE Title = %s", (album,))
     result = cursor.fetchone()
@@ -91,25 +97,22 @@ def add_song_to_database(file_path):
     if not album_id:
         cursor.execute("INSERT INTO albums (Title, ArtistID) VALUES (%s, %s)", (album, artist_id))
         album_id = cursor.lastrowid
-        db.commit()
 
     current_time = datetime.now()
 
     # 插入歌曲信息
     cursor.execute("""
-        INSERT INTO songs 
-        (Title, ArtistID, AlbumID, Genre, Duration, ReleaseDate, FilePath, CoverImagePath, 
-         Lyrics, Language, PlayCount, CreateTime, UpdateTime, AlbumArtist, Year, 
-         TrackNumber, DiscNumber, Composer, Lyricist, Comments, Channels)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """, (
-        title, artist_id, album_id, genre, duration, release_date, file_path, cover_image_path,
-        lyrics, language, 0, current_time, current_time, album_artist, year,
-        track_number, disc_number, composer, lyricist, comments, channels
-    ))
-
-    db.commit()
+                   INSERT INTO songs
+                   (Title, ArtistID, AlbumID, Genre, Duration, ReleaseDate, FilePath, CoverImagePath,
+                    Lyrics, Language, PlayCount, CreateTime, UpdateTime, AlbumArtist, Year,
+                    TrackNumber, DiscNumber, Composer, Lyricist, Comments, Channels)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                           %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   """, (
+                       title, artist_id, album_id, genre, duration, release_date, file_path, cover_image_path,
+                       lyrics, language, 0, current_time, current_time, album_artist, year,
+                       track_number, disc_number, composer, lyricist, comments, channels
+                   ))
 
 
 def scan_folder(folder_path):
@@ -117,6 +120,8 @@ def scan_folder(folder_path):
         for file in files:
             if file.lower().endswith(".mp3"):
                 add_song_to_database(os.path.join(root, file))
+    # 所有操作完成后统一提交事务
+    db_connection.commit()
 
 
 def get_folder_path():
@@ -134,4 +139,5 @@ folder_path = get_folder_path()
 scan_folder(folder_path)
 
 # 关闭数据库连接
-db.close()
+cursor.close()
+db_connection.close()

@@ -4,12 +4,19 @@ import SongDetail from '../SongDetail/SongDetail';
 import CurrentList from "../CurrentList/CurrentList";
 import API_URL from '../../config';
 import './Home.css';
-import {likeThisSong, shareThisSong} from "../func/songMenu";
 import {FaHeart, FaList, FaMusic} from 'react-icons/fa';
 
+// 定义 Playlist 组件的 props 类型
+interface PlaylistProps {
+    coverUrl: string;
+    toggleVisable: (panel: string) => void;
+    likeThisSong: () => void;
+    playing: boolean;
+}
+
 // Playlist component
-const Playlist = ({coverUrl, toggleVisable, likeThisSong, shareThisSong, playing, musicId}) => {
-    const imgRef = useRef(null);
+const Playlist: React.FC<PlaylistProps> = ({coverUrl, toggleVisable, likeThisSong, playing}) => {
+    const imgRef = useRef<HTMLImageElement>(null);
 
     useEffect(() => {
         const img = imgRef.current;
@@ -55,24 +62,32 @@ const Playlist = ({coverUrl, toggleVisable, likeThisSong, shareThisSong, playing
             </div>
         </div>
     )
-
 };
 
-function Home({playing, setPlaying, handleNextSong, audioRef}) {
+// 定义 Home 组件的 props 类型
+interface HomeProps {
+    playing: boolean;
+    setPlaying: React.Dispatch<React.SetStateAction<boolean>>;
+    handleNextSong: () => void;
+    audioRef: React.RefObject<HTMLAudioElement>;
+}
+
+function Home({playing, setPlaying, handleNextSong, audioRef}: HomeProps) {
     const location = useLocation();
     const searchParams = new URLSearchParams(location.search);
 
     // 初始化musicId，优先使用URL参数，其次本地存储，最后默认0
-    const initialMusicId = () => {
+    const initialMusicId = (): string => {
         const urlId = searchParams.get("id");
         if (urlId !== null) return urlId;
         const storedId = localStorage.getItem('currentId');
         return storedId || "0";
     };
-    const [musicId, setMusicId] = useState(initialMusicId);
-    const [playlistId, setPlaylistId] = useState(searchParams.get("pid") || "0");
-    const [coverUrl, setCoverUrl] = useState(`${API_URL}/music_cover/${initialMusicId()}.png`);
-    const songElementRef = useRef(null);
+
+    const [musicId, setMusicId] = useState<string>(initialMusicId);
+    const [playlistId, setPlaylistId] = useState<string>(searchParams.get("pid") || "0");
+    const [coverUrl, setCoverUrl] = useState<string>(`${API_URL}/music_cover/${initialMusicId()}.png`);
+    const songElementRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const urlId = searchParams.get("id");
@@ -85,12 +100,12 @@ function Home({playing, setPlaying, handleNextSong, audioRef}) {
         localStorage.setItem('currentId', newMusicId);
     }, [location]); // 依赖location的变化
 
-    const [showLyrics, setShowLyrics] = useState(true);
-    const [showPlaylist, setShowPlaylist] = useState(true);
-    const [panelWidth, setPanelWidth] = useState('75%');  // 新增宽度状态
+    const [showLyrics, setShowLyrics] = useState<boolean>(true);
+    const [showPlaylist, setShowPlaylist] = useState<boolean>(true);
+    const [panelWidth, setPanelWidth] = useState<string>('75%');  // 新增宽度状态
 
     // 完全重构的切换函数
-    const toggleVisibility = (panel) => {
+    const toggleVisibility = (panel: string): void => {
         switch (panel) {
             case 'lrc_div':
                 setShowLyrics(prev => !prev);
@@ -104,6 +119,17 @@ function Home({playing, setPlaying, handleNextSong, audioRef}) {
         }
     };
 
+    // 占位函数 - 需要根据实际功能实现
+    const likeThisSong = (): void => {
+        // TODO: 实现收藏功能
+        console.log('Like this song:', musicId);
+    };
+
+    // 占位函数 - 需要根据实际功能实现
+    const shareThisSong = (): void => {
+        // TODO: 实现分享功能
+        console.log('Share this song:', musicId);
+    };
 
     useEffect(() => {
         if (!showLyrics) return;
@@ -113,7 +139,7 @@ function Home({playing, setPlaying, handleNextSong, audioRef}) {
         if (!lyricsDiv || !audio) return;
 
         // 增强版时间解析函数
-        const parseLyricTime = (timeStr) => {
+        const parseLyricTime = (timeStr: string): number => {
             if (!timeStr) return 0;
             try {
                 // 支持多种时间格式：[mm:ss.xx] 或 [mm:ss:xx]
@@ -126,8 +152,8 @@ function Home({playing, setPlaying, handleNextSong, audioRef}) {
         };
 
         // 滚动锁定处理
-        const handleScroll = (e) => {
-            if (lyricsDiv.contains(e.target)) {
+        const handleScroll = (e: Event): void => {
+            if (lyricsDiv.contains(e.target as Node)) {
                 e.stopPropagation();
                 if (e.cancelable) e.preventDefault();
             }
@@ -140,16 +166,16 @@ function Home({playing, setPlaying, handleNextSong, audioRef}) {
         );
 
         // 歌词处理逻辑
-        let lyricLines = [];
+        let lyricLines: HTMLParagraphElement[] = [];
         let currentActiveIndex = -1;
-        let animationFrameId = null;
+        let animationFrameId: number | null = null;
 
-        const updateLyricLines = () => {
+        const updateLyricLines = (): void => {
             lyricLines = Array.from(lyricsDiv.querySelectorAll('p[id^="time_"]'));
             currentActiveIndex = -1; // 重置高亮状态
         };
 
-        const handleTimeUpdate = () => {
+        const handleTimeUpdate = (): void => {
             const currentTime = audio.currentTime;
             let newActiveIndex = -1;
 
@@ -222,9 +248,7 @@ function Home({playing, setPlaying, handleNextSong, audioRef}) {
                     toggleVisable={toggleVisibility}
                     coverUrl={coverUrl}
                     likeThisSong={likeThisSong}
-                    shareThisSong={shareThisSong}
                     playing={playing}
-                    musicId={musicId}
                 />
 
                 {/* 歌词面板 - 通过状态控制显示 */}

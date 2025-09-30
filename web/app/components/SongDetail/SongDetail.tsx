@@ -1,10 +1,20 @@
-import React, {useState, useEffect} from 'react';
+import React, { useState, useEffect } from 'react';
 import API_URL from "../../config";
 
-function SongDetail({musicId}) {
-    const [lyricsData, setLyricsData] = useState([]);
-    const [musicName, setMusicName] = useState('');
-    const [musicArtist, setMusicArtist] = useState('');
+interface LyricsLine {
+    time: string;
+    text: string;
+    nextTime?: string;
+}
+
+interface SongDetailProps {
+    musicId: string;
+}
+
+function SongDetail({ musicId }: SongDetailProps) {
+    const [lyricsData, setLyricsData] = useState<LyricsLine[]>([]);
+    const [musicName, setMusicName] = useState<string>('');
+    const [musicArtist, setMusicArtist] = useState<string>('');
 
     // 获取歌曲基本信息
     useEffect(() => {
@@ -44,7 +54,7 @@ function SongDetail({musicId}) {
     }, [musicId]);
 
     // 歌词解析函数
-    const parseLyrics = (rawText) => {
+    const parseLyrics = (rawText: string): LyricsLine[] => {
         const lines = rawText.split('\n');
         return lines.map((line, index) => {
             const match = line.match(/\[(\d+:\d+\.\d+)\](.*)/);
@@ -55,11 +65,11 @@ function SongDetail({musicId}) {
                 text: match[2].trim(),
                 nextTime: lines[index + 1]?.match(/\[(\d+:\d+\.\d+)\]/)?.[1]
             };
-        }).filter(Boolean);
+        }).filter(Boolean) as LyricsLine[];
     };
 
     // 时间转换函数
-    const toSeconds = (timeStr) => {
+    const toSeconds = (timeStr: string): number => {
         if (!timeStr) return 0;
         const [minutes, rest] = timeStr.split(':');
         const [seconds, milliseconds] = rest.split('.');
@@ -67,8 +77,8 @@ function SongDetail({musicId}) {
     };
 
     // 计算持续时间
-    const calculateDuration = (currentTime, nextTime) => {
-        const duration = toSeconds(nextTime) - toSeconds(currentTime);
+    const calculateDuration = (currentTime: string, nextTime?: string): number => {
+        const duration = toSeconds(nextTime || '') - toSeconds(currentTime);
         return duration > 0 ? duration : 3; // 最小保持1秒
     };
 
@@ -89,7 +99,7 @@ function SongDetail({musicId}) {
                             key={index}
                             id={`time_${timeId}`}
                             data-text={line.text}
-                            style={{'--duration': `${duration}s`}}
+                            style={{ '--duration': `${duration}s` } as React.CSSProperties}
                         >
                             {line.text}
                         </p>

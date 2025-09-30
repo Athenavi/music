@@ -3,21 +3,19 @@ import logging
 import os
 import time
 import uuid
-from configparser import ConfigParser
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from io import BytesIO
-from flask_caching import Cache
+
 import bcrypt
 import mysql
 import requests
 from PIL import Image
+from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_file, abort, make_response, session
+from flask_caching import Cache
 from flask_cors import CORS
-from flask_jwt_extended import (
-    JWTManager, jwt_required, create_access_token,
-    get_jwt_identity,
-)
+from flask_jwt_extended import (JWTManager, jwt_required, create_access_token, get_jwt_identity, )
 from mutagen.id3 import ID3, APIC
 from mutagen.mp3 import MP3
 
@@ -38,19 +36,14 @@ print(base_dir)
 
 logging.basicConfig(filename='user.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-config = ConfigParser()
-try:
-    config.read('config.ini', encoding='utf-8')
-except UnicodeDecodeError:
-    config.read('config.ini', encoding='gbk')
+# 加载 .env 文件
+load_dotenv()
 
 
 def get_general_conf():
-    sys_config = ConfigParser()
-    sys_config.read('config.ini', encoding='utf-8')
-    domain = config.get('general', 'domain', fallback='error').strip("'")
-    title = config.get('general', 'title', fallback='error').strip("'")
-    api_url = config.get('general', 'api_url', fallback='error').strip("'")
+    domain = os.getenv('DOMAIN')
+    title = os.getenv('TITLE')
+    api_url = os.getenv('API_URL')
 
     return domain, title, api_url
 
@@ -325,7 +318,7 @@ def api_search():
             search_api_url = f'{API_URL}search?keywords={kw}'
             response = requests.get(search_api_url, timeout=3)  # 设置超时时间为3秒
             data = response.json()
-            #print(data)
+            # print(data)
 
             # 将新获取的数据写入缓存文件
             os.makedirs(CACHE_DIR, exist_ok=True)  # 创建缓存目录（如果不存在）
@@ -596,35 +589,25 @@ def artist_subscribe():
 
 @app.route('/comment', methods=['POST'])
 def comment():
-    data = {
-        "status": "success",
-        "action": request.args.get('t')
-    }
+    data = {"status": "success", "action": request.args.get('t')}
     return jsonify(data)
 
 
 @app.route('/banner')
 def banner():
-    data = {
-        "banners": ["banner1", "banner2"]
-    }
+    data = {"banners": ["banner1", "banner2"]}
     return jsonify(data)
 
 
 @app.route('/resource/like', methods=['POST'])
 def resource_like():
-    data = {
-        "status": "liked" if request.args.get('t') == '1' else "unliked",
-        "id": request.args.get('id')
-    }
+    data = {"status": "liked" if request.args.get('t') == '1' else "unliked", "id": request.args.get('id')}
     return jsonify(data)
 
 
 @app.route('/playlist/mylike')
 def mylike():
-    data = {
-        "playlists": []
-    }
+    data = {"playlists": []}
     return jsonify(data)
 
 
@@ -813,16 +796,10 @@ def get_song_info(song_id):
 
         if 'id' in response_json:  # 检查返回的 JSON 是否包含 id
             song_info = response_json
-            result = {
-                'id': song_info['id'],
-                'title': song_info['title'],
-                'artist': song_info['artist'],
-                'album': song_info['album'],
-                'cover': song_info['cover'],
-                'url': song_info['link'],
+            result = {'id': song_info['id'], 'title': song_info['title'], 'artist': song_info['artist'],
+                'album': song_info['album'], 'cover': song_info['cover'], 'url': song_info['link'],
                 'lyric': song_info.get('lyric', ''),  # 使用 get 方法以防缺少字段
-                'sub_lyric': song_info.get('sub_lyric', '')
-            }
+                'sub_lyric': song_info.get('sub_lyric', '')}
 
             # 将数据写入缓存文件
             os.makedirs(os.path.dirname(cache_file_path), exist_ok=True)  # 确保目录存在
@@ -962,8 +939,7 @@ def song_name(id=0, pid=0, uid=0):
         db = get_db_connection().get_connection()
         cursor = db.cursor()
         try:
-            query = "SELECT SongID FROM `playlist_songs` WHERE PlayListID = {}".format(
-                pid)
+            query = "SELECT SongID FROM `playlist_songs` WHERE PlayListID = {}".format(pid)
             print(query)
             cursor.execute(query)
             list_data = cursor.fetchall()
@@ -1001,123 +977,88 @@ def song_name(id=0, pid=0, uid=0):
 @app.route('/album', methods=['GET'])
 def album():
     album_id = request.args.get('id')
-    data = {
-        "id": album_id,
-        "name": "Album " + album_id,
-        "songs": []
-    }
+    data = {"id": album_id, "name": "Album " + album_id, "songs": []}
     return jsonify(data)
 
 
 @app.route('/album/detail/dynamic')
 def album_detail_dynamic():
     album_id = request.args.get('id')
-    data = {
-        "id": album_id,
-        "likeCount": 100,
-        "commentCount": 50
-    }
+    data = {"id": album_id, "likeCount": 100, "commentCount": 50}
     return jsonify(data)
 
 
 @app.route('/album/sub', methods=['POST'])
 def album_sub():
     action = "Subscribed" if request.args.get('t') == '1' else "Unsubscribed"
-    data = {
-        "status": action
-    }
+    data = {"status": action}
     return jsonify(data)
 
 
 @app.route('/album/sublist')
 def album_sublist():
-    data = {
-        "albums": []
-    }
+    data = {"albums": []}
     return jsonify(data)
 
 
 @app.route('/artists')
 def artists():
     artist_id = request.args.get('id')
-    data = {
-        "artist": {"id": artist_id, "name": "Artist " + artist_id},
-        "songs": []  # 示例热门歌曲数据
+    data = {"artist": {"id": artist_id, "name": "Artist " + artist_id}, "songs": []  # 示例热门歌曲数据
     }
     return jsonify(data)
 
 
 @app.route('/artist/mv')
 def artist_mv():
-    data = {
-        "mvs": []  # 示例MV数据
+    data = {"mvs": []  # 示例MV数据
     }
     return jsonify(data)
 
 
 @app.route('/artist/album')
 def artist_album():
-    data = {
-        "albums": []
-    }
+    data = {"albums": []}
     return jsonify(data)
 
 
 @app.route('/artist/desc')
 def artist_desc():
     artist_id = request.args.get('id')
-    data = {
-        "description": "Description for artist " + artist_id
-    }
+    data = {"description": "Description for artist " + artist_id}
     return jsonify(data)
 
 
 @app.route('/artist/detail')
 def artist_detail():
     artist_id = request.args.get('id')
-    data = {
-        "artist": {"id": artist_id, "name": "Artist " + artist_id, "detail": "Some details here"}
-    }
+    data = {"artist": {"id": artist_id, "name": "Artist " + artist_id, "detail": "Some details here"}}
     return jsonify(data)
 
 
 @app.route('/simi/artist')
 def simi_artist():
     artist_id = request.args.get('id')
-    data = {
-        "similarArtists": []
-    }
+    data = {"similarArtists": []}
     return jsonify(data)
 
 
 @app.route('/simi/playlist')
 def simi_playlist():
     song_id = request.args.get('id')
-    data = {
-        "playlists": []
-    }
+    data = {"playlists": []}
     return jsonify(data)
 
 
 @app.route('/recommend/resource')
 def recommend_resource():
-    data = {
-        "playlists": [
-            {"id": 1, "name": "Playlist 1"},
-            {"id": 2, "name": "Playlist 2"},
-        ]
-    }
+    data = {"playlists": [{"id": 1, "name": "Playlist 1"}, {"id": 2, "name": "Playlist 2"}, ]}
     return jsonify(data)
 
 
 @app.route('/recommend/songs')
 def recommend_songs():
-    data = {
-        "songs": [
-            {"id": 1, "name": "Song 1"},
-            {"id": 2, "name": "Song 2"},
-        ]
-    }
+    data = {"songs": [{"id": 1, "name": "Song 1"}, {"id": 2, "name": "Song 2"}, ]}
     return jsonify(data)
 
 
@@ -1130,33 +1071,20 @@ def dislike_song():
 
 @app.route('/history/recommend/songs')
 def history_recommend_songs():
-    data = {
-        "dates": ["2020-06-21", "2020-06-20"]
-    }
+    data = {"dates": ["2020-06-21", "2020-06-20"]}
     return jsonify(data)
 
 
 @app.route('/history/recommend/songs/detail')
 def history_recommend_songs_detail():
     date = request.args.get('date')
-    data = {
-        "date": date,
-        "songs": [
-            {"id": 1, "name": "Historical Song 1"},
-            {"id": 2, "name": "Historical Song 2"},
-        ]
-    }
+    data = {"date": date, "songs": [{"id": 1, "name": "Historical Song 1"}, {"id": 2, "name": "Historical Song 2"}, ]}
     return jsonify(data)
 
 
 @app.route('/personal_fm')
 def personal_fm():
-    data = {
-        "tracks": [
-            {"id": 1, "name": "Personal FM Track 1"},
-            {"id": 2, "name": "Personal FM Track 2"},
-        ]
-    }
+    data = {"tracks": [{"id": 1, "name": "Personal FM Track 1"}, {"id": 2, "name": "Personal FM Track 2"}, ]}
     return jsonify(data)
 
 
@@ -1179,10 +1107,7 @@ def like_song():
 @app.route('/likelist')
 def like_list():
     user_id = request.args.get('uid')
-    data = {
-        "user_id": user_id,
-        "liked_songs": [{"id": 1}, {"id": 2}]
-    }
+    data = {"user_id": user_id, "liked_songs": [{"id": 1}, {"id": 2}]}
     return jsonify(data)
 
 
@@ -1198,49 +1123,35 @@ def top_album():
     # 这里仅为例子，实际参数处理可以更复杂
     year = request.args.get('year', '2021')
     month = request.args.get('month', '01')
-    data = {
-        "year": year,
-        "month": month,
-        "albums": [{"id": 1, "name": "Top Album 1"}, {"id": 2, "name": "Top Album 2"}]
-    }
+    data = {"year": year, "month": month,
+        "albums": [{"id": 1, "name": "Top Album 1"}, {"id": 2, "name": "Top Album 2"}]}
     return jsonify(data)
 
 
 @app.route('/mv/all')
 def mv_all():
     area = request.args.get('area', '全部')
-    data = {
-        "area": area,
-        "mvs": [{"id": 1, "name": "MV 1"}, {"id": 2, "name": "MV 2"}]
-    }
+    data = {"area": area, "mvs": [{"id": 1, "name": "MV 1"}, {"id": 2, "name": "MV 2"}]}
     return jsonify(data)
 
 
 @app.route('/mv/first')
 def mv_first():
     limit = request.args.get('limit', 30)
-    data = {
-        "limit": limit,
-        "new_mvs": [{"id": 1, "name": "New MV 1"}, {"id": 2, "name": "New MV 2"}]
-    }
+    data = {"limit": limit, "new_mvs": [{"id": 1, "name": "New MV 1"}, {"id": 2, "name": "New MV 2"}]}
     return jsonify(data)
 
 
 @app.route('/mv/exclusive/rcmd')
 def mv_exclusive_rcmd():
     limit = request.args.get('limit', 30)
-    data = {
-        "limit": limit,
-        "exclusive_mvs": [{"id": 1, "name": "Exclusive MV 1"}, {"id": 2, "name": "Exclusive MV 2"}]
-    }
+    data = {"limit": limit, "exclusive_mvs": [{"id": 1, "name": "Exclusive MV 1"}, {"id": 2, "name": "Exclusive MV 2"}]}
     return jsonify(data)
 
 
 @app.route('/personalized/mv')
 def personalized_mv():
-    data = {
-        "recommend_mvs": [{"id": 1, "name": "Recommended MV 1"}, {"id": 2, "name": "Recommended MV 2"}]
-    }
+    data = {"recommend_mvs": [{"id": 1, "name": "Recommended MV 1"}, {"id": 2, "name": "Recommended MV 2"}]}
     return jsonify(data)
 
 

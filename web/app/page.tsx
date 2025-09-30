@@ -8,13 +8,7 @@ import PlaylistDetail from "./components/playlistDetail/playlistDetail";
 import API_URL from "./config";
 import Singer from "./components/Singer/Singer";
 import SearchPage from "./components/search/search";
-import {likeThisSong} from "./components/func/songMenu";
 
-// 定义类型
-interface TokenState {
-    token: string | null;
-    setToken: (token: string | null) => void;
-}
 
 interface AudioState {
     playing: boolean;
@@ -40,19 +34,24 @@ interface NavigationState {
 type AppProps = object
 
 const App: React.FC<AppProps> = () => {
-    const [token, setToken] = useState<string | null>(localStorage.getItem('token') || null);
     const audioRef = useRef<HTMLAudioElement>(null);
     const [playing, setPlaying] = useState<boolean>(false);
-    const [musicId, setMusicId] = useState<string>(localStorage.getItem('currentId') || "0");
+    const [musicId, setMusicId] = useState<string>("0");
     const [currentTime, setCurrentTime] = useState<number>(0);
     const [duration, setDuration] = useState<number>(0);
-    const [volume, setVolume] = useState<number>(() => {
-        const savedVolume = localStorage.getItem('volume');
-        return savedVolume !== null ? parseFloat(savedVolume) : 1;
-    });
+    const [volume, setVolume] = useState<number>(1);
     const [isMuted, setIsMuted] = useState<boolean>(false);
     const [isNavExpanded, setIsNavExpanded] = useState<boolean>(false);
     const musicIdRef = useRef<string>(musicId);
+
+    useEffect(() => {
+        // 确保在浏览器环境下访问 localStorage
+        if (typeof window !== 'undefined') {
+            setMusicId(localStorage.getItem('currentId') || "0");
+            const savedVolume = localStorage.getItem('volume');
+            setVolume(savedVolume !== null ? parseFloat(savedVolume) : 1);
+        }
+    }, []);
 
     // 同步最新musicId到ref
     useEffect(() => {
@@ -117,8 +116,7 @@ const App: React.FC<AppProps> = () => {
         if (!audio) return;
 
         const savedVolume = localStorage.getItem('volume');
-        const initialVolume = savedVolume !== null ?
-            Math.min(1, Math.max(0, parseFloat(savedVolume))) : 1;
+        const initialVolume = savedVolume !== null ? Math.min(1, Math.max(0, parseFloat(savedVolume))) : 1;
 
         const handleLoadedMetadata = () => {
             audio.volume = initialVolume;
@@ -249,120 +247,103 @@ const App: React.FC<AppProps> = () => {
         }
     };
 
-    return (
-        <Router>
-            <nav className={isNavExpanded ? "expanded" : "collapsed"}>
-                <Link to="/">
-                    <img src="https://7trees.cn/favicon.ico" alt="Logo" className="logo"/>
-                </Link>
-                <Link to="/discover/playlists">发现音乐</Link>
-                {token ? (
-                    <>
-                        <Link to="/my">我</Link>
-                        <Link to="/discover/singer">歌手</Link>
-                        <Link to="/search">搜索</Link>
-                    </>
-                ) : (
-                    <Link to="/login">登录</Link>
-                )}
-            </nav>
+    return <Router>
+        <nav className={isNavExpanded ? "expanded" : "collapsed"}>
+            <Link to="/discover/playlists">发现音乐</Link>
+        </nav>
 
-            <header>
-                <div className="secondMenu">
-                    <Link to="/toplist">排行榜</Link>
-                    <Link to="/discover/album">专辑</Link>
-                    <Link to="/song">播放</Link>
-                    <button onClick={toggleNav} className="toggle-button">☰</button>
+        <header>
+            <div className="secondMenu">
+                <Link to="/toplist">排行榜</Link>
+                <Link to="/discover/album">专辑</Link>
+                <Link to="/song">播放</Link>
+                <button onClick={toggleNav} className="toggle-button">☰</button>
+            </div>
+        </header>
+
+        <div className='player'>
+            <audio
+                ref={audioRef}
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                src={`${API_URL}/music/${musicId}.mp3`}
+                className="hidden-audio"
+            />
+
+            <div className="custom-player">
+                {/* 左侧歌曲信息 */}
+                <div className="song-info">
+                    <Link to="/song">
+                        <img
+                            src={`${API_URL}/music_cover/${musicId}.png` || 'default-cover.jpg'}
+                            className="album-cover"
+                            alt="专辑封面"
+                        />
+                    </Link>
                 </div>
-            </header>
 
-            <div className='player'>
-                <audio
-                    ref={audioRef}
-                    onPlay={() => setPlaying(true)}
-                    onPause={() => setPlaying(false)}
-                    src={`${API_URL}/music/${musicId}.mp3`}
-                    className="hidden-audio"
-                />
-
-                <div className="custom-player">
-                    {/* 左侧歌曲信息 */}
-                    <div className="song-info">
-                        <Link to="/song">
-                            <img
-                                src={`${API_URL}/music_cover/${musicId}.png` || 'default-cover.jpg'}
-                                className="album-cover"
-                                alt="专辑封面"
-                            />
-                        </Link>
+                <div className="controls">
+                    <button className="icon-button" onClick={() => handleSong(-1)}>◀◁</button>
+                    <button
+                        className="play-pause"
+                        onClick={togglePlay}
+                    >
+                        {playing ? '⏸' : '▶'}
+                    </button>
+                    <button className="icon-button" onClick={() => handleSong(1)}>▷▶</button>
+                    <div className="progress-container">
+                        <span className="time">{formatTime(currentTime)}</span>
+                        <input
+                            type="range"
+                            className="progress"
+                            min="0"
+                            max={duration || 0}
+                            value={currentTime}
+                            onChange={handleProgressChange}
+                        />
+                        <span className="time">{formatTime(duration)}</span>
                     </div>
+                </div>
 
-                    <div className="controls">
-                        <button className="icon-button" onClick={() => handleSong(-1)}>◀◁</button>
-                        <button
-                            className="play-pause"
-                            onClick={togglePlay}
-                        >
-                            {playing ? '⏸' : '▶'}
+                <div className="extra-controls">
+                    <div className="volume-control">
+                        <button className="mute" onClick={toggleMute}>
+                            {isMuted ? '🔇' : volume > 0.5 ? '🔊' : '🔉'}
                         </button>
-                        <button className="icon-button" onClick={() => handleSong(1)}>▷▶</button>
-                        <div className="progress-container">
-                            <span className="time">{formatTime(currentTime)}</span>
-                            <input
-                                type="range"
-                                className="progress"
-                                min="0"
-                                max={duration || 0}
-                                value={currentTime}
-                                onChange={handleProgressChange}
-                            />
-                            <span className="time">{formatTime(duration)}</span>
-                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                            value={volume}
+                            onChange={handleVolumeChange}
+                            className="volume"
+                        />
                     </div>
-
-                    <div className="extra-controls">
-                        <button className="icon-button" id="likeButton" onClick={() => likeThisSong(musicId)}>♥</button>
-                        <div className="volume-control">
-                            <button className="mute" onClick={toggleMute}>
-                                {isMuted ? '🔇' : volume > 0.5 ? '🔊' : '🔉'}
-                            </button>
-                            <input
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.1"
-                                value={volume}
-                                onChange={handleVolumeChange}
-                                className="volume"
-                            />
-                        </div>
-                        <button className="icon-button">≡</button>
-                    </div>
+                    <button className="icon-button">≡</button>
                 </div>
             </div>
+        </div>
 
-            <Routes>
-                <Route path="/search" element={<SearchPage/>}/>
-                <Route path="/song" element={
-                    <Home
-                        playing={playing}
-                        setPlaying={setPlaying}
-                        handleNextSong={handleNextSong}
-                        audioRef={audioRef}
-                    />
-                }/>
-                <Route path="/toplist" element={<TopList/>}/>
-                <Route path="/discover/singer" element={<Singer/>}/>
-                <Route path="/discover/playlists"
-                       element={<PlayLists setMusicId={setMusicId} pageType="pl" token={null}/>}/>
-                <Route path="/discover/album"
-                       element={<PlayLists setMusicId={setMusicId} pageType="al" token={null}/>}/>
-                <Route path="/playlist"
-                       element={<PlaylistDetail token={token} setMusicId={setMusicId} pageType="pl"/>}/>
-                <Route path="/album" element={<PlaylistDetail token={token} setMusicId={setMusicId} pageType="al"/>}/>
-            </Routes>
-        </Router>
-    );
+        <Routes>
+            <Route path="/search" element={<SearchPage/>}/>
+            <Route path="/song" element={<Home
+                playing={playing}
+                setPlaying={setPlaying}
+                handleNextSong={handleNextSong}
+                audioRef={audioRef}
+            />}/>
+            <Route path="/toplist" element={<TopList/>}/>
+            <Route path="/discover/singer" element={<Singer/>}/>
+            <Route path="/discover/playlists"
+                   element={<PlayLists setMusicId={setMusicId} pageType="pl" token={null}/>}/>
+            <Route path="/discover/album"
+                   element={<PlayLists setMusicId={setMusicId} pageType="al" token={null}/>}/>
+            <Route path="/playlist"
+                   element={<PlaylistDetail token={null} setMusicId={setMusicId} pageType="pl"/>}/>
+            <Route path="/album" element={<PlaylistDetail token={null} setMusicId={setMusicId} pageType="al"/>}/>
+        </Routes>
+    </Router>;
 };
 
 export default App;

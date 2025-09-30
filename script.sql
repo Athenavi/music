@@ -71,7 +71,7 @@ create table songs
     TrackNumber    int          null comment '曲目编号',
     DiscNumber     int          null comment '唱片编号',
     Composer       varchar(255) null comment '作曲家',
-    Lyricist       varchar(255) null comment '作词人',
+    Lyricist       varchar(500) null comment '作词人',
     Comments       text         null comment '评论',
     BitDepth       int          null comment '位深',
     Channels       int          null comment '声道数',

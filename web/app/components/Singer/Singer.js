@@ -3,7 +3,6 @@ import API_URL from '../../config';
 import {Link, useLocation} from "react-router-dom";
 import removeFromPlaylist from "../func/removeFromPlaylist";
 import addToPlaylist from "../func/addToPlaylist";
-import {likeThisSong} from "../func/songMenu";
 import {FiPlus, FiMinus, FiHeart, FiMusic, FiUser} from 'react-icons/fi';
 
 
