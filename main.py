@@ -797,9 +797,9 @@ def get_song_info(song_id):
         if 'id' in response_json:  # 检查返回的 JSON 是否包含 id
             song_info = response_json
             result = {'id': song_info['id'], 'title': song_info['title'], 'artist': song_info['artist'],
-                'album': song_info['album'], 'cover': song_info['cover'], 'url': song_info['link'],
-                'lyric': song_info.get('lyric', ''),  # 使用 get 方法以防缺少字段
-                'sub_lyric': song_info.get('sub_lyric', '')}
+                      'album': song_info['album'], 'cover': song_info['cover'], 'url': song_info['link'],
+                      'lyric': song_info.get('lyric', ''),  # 使用 get 方法以防缺少字段
+                      'sub_lyric': song_info.get('sub_lyric', '')}
 
             # 将数据写入缓存文件
             os.makedirs(os.path.dirname(cache_file_path), exist_ok=True)  # 确保目录存在
@@ -865,13 +865,50 @@ async def async_db_connection():
         db.close()
 
 
+@app.route('/music_info/<int:id>')
+def music_info(id):
+    if id:
+        try:
+            with get_db_connection().get_connection() as db:  # 假设你有一个同步的数据库连接函数 db_connection
+                cursor = db.cursor()
+                query = "SELECT Title, ArtistID, AlbumID, Genre, Duration, ReleaseDate, FilePath, Lyrics, Language, PlayCount, CreateTime, UpdateTime FROM songs WHERE SongID = %s;"
+                cursor.execute(query, (id,))
+                song_data = cursor.fetchone()
+
+                if song_data:
+                    song_info = {
+                        "id": id,
+                        "title": song_data[0],
+                        "artist": song_data[1],
+                        "album": song_data[2],
+                        "genre": song_data[3],
+                        "duration": song_data[4],
+                        "releaseDate": song_data[5],
+                        "filePath": song_data[6],
+                        "lyrics": song_data[7],
+                        "language": song_data[8],
+                        "playCount": song_data[9],
+                        "createTime": song_data[10],
+                        "updateTime": song_data[11]
+                    }
+                    return jsonify(song_info)
+                else:
+                    return jsonify({"error": "Invalid song id"})
+
+        except Exception as e:
+            print(f"Error: {e}")
+            return make_response("An error occurred while retrieving song information.", 500)
+    else:
+        return jsonify({"error": "Invalid song id"})
+
+
 @app.route('/api/lrc/<int:song_id>')
 def get_lrc(song_id):
     if song_id:
         try:
             lrc_file_dir = os.path.join(base_dir, 'lrc', f'{song_id}.lrc')
             if os.path.exists(lrc_file_dir):
-                send_file(lrc_file_dir, mimetype='text/plain')
+                return send_file(lrc_file_dir, mimetype='text/plain')
             with get_db_connection().get_connection() as db:  # 假设你有一个同步的数据库连接函数 db_connection
                 cursor = db.cursor()
                 query = "SELECT Lyrics FROM songs WHERE SongID = %s;"
@@ -899,7 +936,7 @@ def get_lrc(song_id):
 
         except Exception as e:
             print(f"Error: {e}")
-            return make_response("An error occurred while retrieving lyrics.", 500)
+            return make_response(f"An error occurred while retrieving lyrics: {str(e)}", 500)
 
 
 def save_lyrics(lyrics, song_id):
@@ -1005,14 +1042,14 @@ def album_sublist():
 def artists():
     artist_id = request.args.get('id')
     data = {"artist": {"id": artist_id, "name": "Artist " + artist_id}, "songs": []  # 示例热门歌曲数据
-    }
+            }
     return jsonify(data)
 
 
 @app.route('/artist/mv')
 def artist_mv():
     data = {"mvs": []  # 示例MV数据
-    }
+            }
     return jsonify(data)
 
 
@@ -1124,7 +1161,7 @@ def top_album():
     year = request.args.get('year', '2021')
     month = request.args.get('month', '01')
     data = {"year": year, "month": month,
-        "albums": [{"id": 1, "name": "Top Album 1"}, {"id": 2, "name": "Top Album 2"}]}
+            "albums": [{"id": 1, "name": "Top Album 1"}, {"id": 2, "name": "Top Album 2"}]}
     return jsonify(data)
 
 
