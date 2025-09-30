@@ -65,40 +65,34 @@ const Playlist: React.FC<PlaylistProps> = ({coverUrl, toggleVisable, likeThisSon
 };
 
 // 定义 Home 组件的 props 类型
+// 修改 HomeProps 接口：
 interface HomeProps {
     playing: boolean;
     setPlaying: React.Dispatch<React.SetStateAction<boolean>>;
-    handleNextSong: () => void;
+    handleNextSong: (nextMusicId: string) => void;  // 修正类型
     audioRef: React.RefObject<HTMLAudioElement>;
+    musicId: string;             // 新增
+    setMusicId: React.Dispatch<React.SetStateAction<string>>; // 新增
 }
 
-function Home({playing, setPlaying, handleNextSong, audioRef}: HomeProps) {
+function Home({playing, setPlaying, handleNextSong, audioRef, musicId, setMusicId}: HomeProps) {
     const location = useLocation();
     const searchParams = new URLSearchParams(location.search);
-
-    // 初始化musicId，优先使用URL参数，其次本地存储，最后默认0
-    const initialMusicId = (): string => {
-        const urlId = searchParams.get("id");
-        if (urlId !== null) return urlId;
-        const storedId = localStorage.getItem('currentId');
-        return storedId || "0";
-    };
-
-    const [musicId, setMusicId] = useState<string>(initialMusicId);
     const [playlistId, setPlaylistId] = useState<string>(searchParams.get("pid") || "0");
-    const [coverUrl, setCoverUrl] = useState<string>(`${API_URL}/music_cover/${initialMusicId()}.png`);
-    const songElementRef = useRef<HTMLDivElement>(null);
+    const [coverUrl, setCoverUrl] = useState<string>(`${API_URL}/music_cover/${musicId}.png`);
 
     useEffect(() => {
         const urlId = searchParams.get("id");
         const pid = searchParams.get("pid") || "0";
-        const storedId = localStorage.getItem('currentId') || "0";
-        const newMusicId = urlId !== null ? urlId : storedId;
-        setMusicId(newMusicId);
+
+        if (urlId !== null && urlId !== musicId) {
+            setMusicId(urlId);
+            localStorage.setItem('currentId', urlId);
+        }
+
         setPlaylistId(pid);
-        setCoverUrl(`${API_URL}/music_cover/${newMusicId}.png`);
-        localStorage.setItem('currentId', newMusicId);
-    }, [location]); // 依赖location的变化
+        setCoverUrl(`${API_URL}/music_cover/${musicId}.png`);
+    }, [location, musicId, setMusicId]);
 
     const [showLyrics, setShowLyrics] = useState<boolean>(true);
     const [showPlaylist, setShowPlaylist] = useState<boolean>(true);
@@ -276,7 +270,6 @@ function Home({playing, setPlaying, handleNextSong, audioRef}: HomeProps) {
                                 setMusicId={setMusicId}
                                 handleNextSong={handleNextSong}
                                 key={musicId}
-                                toggleVisable={toggleVisibility}
                             />
                         </div>
                         {/* 添加关闭按钮 */}

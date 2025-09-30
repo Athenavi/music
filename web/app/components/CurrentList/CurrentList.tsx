@@ -35,8 +35,7 @@ interface DragResult {
 const CurrentList: React.FC<CurrentListProps> = React.memo(({
   pid,
   setMusicId,
-  handleNextSong,
-  toggleVisable
+  handleNextSong
 }) => {
   const [data, setData] = useState<PlaylistData | null>(null);
   const [isEditing, setIsEditing] = useState(false);
