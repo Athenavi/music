@@ -1,7 +1,6 @@
 import React, {useState, useEffect, useCallback} from 'react';
 import {Link} from 'react-router-dom';
 import API_URL from '../../config';
-import {DragDropContext, Droppable, Draggable} from 'react-beautiful-dnd';
 import {MdDragIndicator, MdClose, MdEdit, MdCheck} from 'react-icons/md'; // 添加编辑图标
 import PropTypes from 'prop-types';
 import './CurrentList.css';
@@ -86,8 +85,8 @@ function CurrentList({pid, setMusicId, handleNextSong, toggleVisable}) {
             </div>
 
             {data ? (
-                <DragDropContext onDragEnd={handleDragEnd}>
-                    <Droppable droppableId="playlist">
+                <div onDragEnd={handleDragEnd}>
+                    <div droppableId="playlist">
                         {(provided) => (
                             <ul
                                 {...provided.droppableProps}
@@ -96,7 +95,7 @@ function CurrentList({pid, setMusicId, handleNextSong, toggleVisable}) {
                                 style={{minHeight: 10}}
                             >
                                 {data.播放列表.map((item, index) => (
-                                    <Draggable
+                                    <div
                                         key={item.id}
                                         draggableId={String(item.id)}
                                         index={index}
@@ -150,13 +149,13 @@ function CurrentList({pid, setMusicId, handleNextSong, toggleVisable}) {
                                                 </div>
                                             </li>
                                         )}
-                                    </Draggable>
+                                    </div>
                                 ))}
                                 {provided.placeholder}
                             </ul>
                         )}
-                    </Droppable>
-                </DragDropContext>
+                    </div>
+                </div>
             ) : (
                 <p>加载中...</p>
             )}

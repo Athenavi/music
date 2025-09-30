@@ -1,33 +1,58 @@
+'use client';
 import React, {useEffect, useRef, useState} from 'react';
 import {BrowserRouter as Router, Link, Route, Routes} from 'react-router-dom';
 import Home from './components/Home/Home';
-import Login from './components/Login/Login';
-import Register from './components/Register/Register';
 import TopList from "./components/TopList/TopList";
-import Index from "./components/Index/Index";
 import PlayLists from "./components/PlayLists/PlayLists";
-import './App.css';
 import PlaylistDetail from "./components/playlistDetail/playlistDetail";
 import API_URL from "./config";
-import Logout from "./components/Login/Logout";
 import Singer from "./components/Singer/Singer";
 import SearchPage from "./components/search/search";
 import {likeThisSong} from "./components/func/songMenu";
 
-function App() {
-    const [token, setToken] = useState(localStorage.getItem('token') || null);
-    const audioRef = useRef(null);
-    const [playing, setPlaying] = useState(false);
-    const [musicId, setMusicId] = useState(localStorage.getItem('currentId') || "0");
-    const [currentTime, setCurrentTime] = useState(0);
-    const [duration, setDuration] = useState(0);
-    const [volume, setVolume] = useState(() => {
+// 定义类型
+interface TokenState {
+    token: string | null;
+    setToken: (token: string | null) => void;
+}
+
+interface AudioState {
+    playing: boolean;
+    setPlaying: (playing: boolean) => void;
+    musicId: string;
+    setMusicId: (musicId: string) => void;
+    currentTime: number;
+    setCurrentTime: (time: number) => void;
+    duration: number;
+    setDuration: (duration: number) => void;
+    volume: number;
+    setVolume: (volume: number) => void;
+    isMuted: boolean;
+    setIsMuted: (muted: boolean) => void;
+}
+
+interface NavigationState {
+    isNavExpanded: boolean;
+    setIsNavExpanded: (expanded: boolean) => void;
+}
+
+// 确定 AppProps 的具体类型，这里假设没有其他属性
+type AppProps = object
+
+const App: React.FC<AppProps> = () => {
+    const [token, setToken] = useState<string | null>(localStorage.getItem('token') || null);
+    const audioRef = useRef<HTMLAudioElement>(null);
+    const [playing, setPlaying] = useState<boolean>(false);
+    const [musicId, setMusicId] = useState<string>(localStorage.getItem('currentId') || "0");
+    const [currentTime, setCurrentTime] = useState<number>(0);
+    const [duration, setDuration] = useState<number>(0);
+    const [volume, setVolume] = useState<number>(() => {
         const savedVolume = localStorage.getItem('volume');
         return savedVolume !== null ? parseFloat(savedVolume) : 1;
     });
-    const [isMuted, setIsMuted] = useState(false);
-    const [isNavExpanded, setIsNavExpanded] = useState(false);
-    const musicIdRef = useRef(musicId);
+    const [isMuted, setIsMuted] = useState<boolean>(false);
+    const [isNavExpanded, setIsNavExpanded] = useState<boolean>(false);
+    const musicIdRef = useRef<string>(musicId);
 
     // 同步最新musicId到ref
     useEffect(() => {
@@ -42,11 +67,12 @@ function App() {
     // 初始化音频事件监听
     useEffect(() => {
         const audio = audioRef.current;
+        if (!audio) return;
 
         const updateTime = () => {
             const currentTime = audio.currentTime;
             setCurrentTime(currentTime);
-            const progress = JSON.parse(localStorage.getItem('progress')) || {};
+            const progress = JSON.parse(localStorage.getItem('progress') || '{}');
             progress[musicIdRef.current] = currentTime;
             localStorage.setItem('progress', JSON.stringify(progress));
         };
@@ -56,7 +82,7 @@ function App() {
             const currentVolume = audio.volume;
             setVolume(currentVolume);
             setIsMuted(audio.muted);
-            localStorage.setItem('volume', currentVolume.toString()); // 保存音量到本地存储
+            localStorage.setItem('volume', currentVolume.toString());
         };
 
         audio.addEventListener('timeupdate', updateTime);
@@ -76,7 +102,7 @@ function App() {
         if (!audio) return;
 
         const handleLoadedMetadata = () => {
-            const progress = JSON.parse(localStorage.getItem('progress')) || {};
+            const progress = JSON.parse(localStorage.getItem('progress') || '{}');
             const savedTime = progress[musicId] || 0;
             audio.currentTime = savedTime;
         };
@@ -90,12 +116,10 @@ function App() {
         const audio = audioRef.current;
         if (!audio) return;
 
-        // 确保从存储中获取有效值
         const savedVolume = localStorage.getItem('volume');
         const initialVolume = savedVolume !== null ?
             Math.min(1, Math.max(0, parseFloat(savedVolume))) : 1;
 
-        // 等待元数据加载完成再设置
         const handleLoadedMetadata = () => {
             audio.volume = initialVolume;
             setIsMuted(initialVolume === 0);
@@ -103,25 +127,34 @@ function App() {
 
         audio.addEventListener('loadedmetadata', handleLoadedMetadata);
         return () => audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-    }, [audioRef.current]);
+    }, []);
 
-    const handleNextSong = (nextMusicId) => {
+    const handleNextSong = (nextMusicId: string) => {
+        const audio = audioRef.current;
+        if (!audio) return;
+
         setMusicId(nextMusicId);
-        audioRef.current.pause();
-        audioRef.current.src = API_URL + `/music/${nextMusicId}.mp3`;
+        audio.pause();
+        audio.src = `${API_URL}/music/${nextMusicId}.mp3`;
 
-        audioRef.current.addEventListener('canplaythrough', () => {
-            audioRef.current.play().then(() => {
+        const handleCanPlay = () => {
+            audio.play().then(() => {
                 setPlaying(true);
             });
-        });
+            audio.removeEventListener('canplaythrough', handleCanPlay);
+        };
+
+        audio.addEventListener('canplaythrough', handleCanPlay);
     };
 
     useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+
         const handleNextSongOnEnded = () => {
-            const currentPlaylist = JSON.parse(localStorage.getItem('currentPlaylist')) || {播放列表: []};
-            const playlist = currentPlaylist['播放列表'];
-            const currentIndex = playlist.findIndex(item => item.id === musicId);
+            const currentPlaylist = JSON.parse(localStorage.getItem('currentPlaylist') || '{"播放列表": []}');
+            const playlist = currentPlaylist['播放列表'] as Array<{ id: string }>;
+            const currentIndex = playlist.findIndex((item) => item.id === musicId);
 
             if (currentIndex !== -1 && currentIndex < playlist.length - 1) {
                 const nextMusicId = playlist[currentIndex + 1].id;
@@ -131,39 +164,51 @@ function App() {
             }
         };
 
-        audioRef.current.addEventListener('ended', handleNextSongOnEnded);
+        audio.addEventListener('ended', handleNextSongOnEnded);
 
         return () => {
-            audioRef.current.removeEventListener('ended', handleNextSongOnEnded);
+            audio.removeEventListener('ended', handleNextSongOnEnded);
         };
     }, [musicId]);
 
-    const formatTime = (seconds) => {
+    const formatTime = (seconds: number): string => {
         const minutes = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
         return `${minutes}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const handleProgressChange = (e) => {
+    const handleProgressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const time = parseFloat(e.target.value);
-        audioRef.current.currentTime = time;
+        const audio = audioRef.current;
+        if (audio) {
+            audio.currentTime = time;
+        }
     };
 
-    const handleVolumeChange = (e) => {
+    const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const vol = parseFloat(e.target.value);
-        audioRef.current.volume = vol;
-        audioRef.current.muted = vol === 0;
+        const audio = audioRef.current;
+        if (audio) {
+            audio.volume = vol;
+            audio.muted = vol === 0;
+        }
     };
 
     const toggleMute = () => {
-        audioRef.current.muted = !audioRef.current.muted;
+        const audio = audioRef.current;
+        if (audio) {
+            audio.muted = !audio.muted;
+        }
     };
 
     const togglePlay = () => {
+        const audio = audioRef.current;
+        if (!audio) return;
+
         if (playing) {
-            audioRef.current.pause();
+            audio.pause();
         } else {
-            audioRef.current.play();
+            audio.play();
         }
     };
 
@@ -171,26 +216,31 @@ function App() {
         setIsNavExpanded(!isNavExpanded);
     };
 
-    const handleSong = (page) => {
-        const currentPlaylist = JSON.parse(localStorage.getItem('currentPlaylist')) || {播放列表: []};
-        const playlist = currentPlaylist['播放列表'];
-        const currentIndex = playlist.findIndex(item => item.id === musicId);
+    const handleSong = (page: number) => {
+        const audio = audioRef.current;
+        if (!audio) return;
+
+        const currentPlaylist = JSON.parse(localStorage.getItem('currentPlaylist') || '{"播放列表": []}');
+        const playlist = currentPlaylist['播放列表'] as Array<{ id: string }>;
+        const currentIndex = playlist.findIndex((item) => item.id === musicId);
 
         if (currentIndex !== -1) {
-            let newIndex = currentIndex + page;
+            const newIndex = currentIndex + page;
 
-            // 检查新索引是否在有效范围内
             if (newIndex >= 0 && newIndex < playlist.length) {
                 const newMusicId = playlist[newIndex].id;
                 setMusicId(newMusicId);
-                audioRef.current.pause();
-                audioRef.current.src = API_URL + `/music/${newMusicId}.mp3`;
+                audio.pause();
+                audio.src = `${API_URL}/music/${newMusicId}.mp3`;
 
-                audioRef.current.addEventListener('canplaythrough', () => {
-                    audioRef.current.play().then(() => {
+                const handleCanPlay = () => {
+                    audio.play().then(() => {
                         setPlaying(true);
                     });
-                }, {once: true}); // 只监听一次，避免多次添加事件监听器
+                    audio.removeEventListener('canplaythrough', handleCanPlay);
+                };
+
+                audio.addEventListener('canplaythrough', handleCanPlay);
             } else if (newIndex < 0) {
                 alert("已经是第一首歌曲");
             } else {
@@ -198,7 +248,6 @@ function App() {
             }
         }
     };
-
 
     return (
         <Router>
@@ -232,18 +281,20 @@ function App() {
                     ref={audioRef}
                     onPlay={() => setPlaying(true)}
                     onPause={() => setPlaying(false)}
-                    src={API_URL + `/music/${musicId}.mp3`}
+                    src={`${API_URL}/music/${musicId}.mp3`}
                     className="hidden-audio"
                 />
 
                 <div className="custom-player">
                     {/* 左侧歌曲信息 */}
                     <div className="song-info">
-                        <Link to="/song"><img
-                            src={`${API_URL}/music_cover/${musicId}.png` || 'default-cover.jpg'}
-                            className="album-cover"
-                            alt="专辑封面"
-                        /></Link>
+                        <Link to="/song">
+                            <img
+                                src={`${API_URL}/music_cover/${musicId}.png` || 'default-cover.jpg'}
+                                className="album-cover"
+                                alt="专辑封面"
+                            />
+                        </Link>
                     </div>
 
                     <div className="controls">
@@ -254,8 +305,7 @@ function App() {
                         >
                             {playing ? '⏸' : '▶'}
                         </button>
-                        <button className="icon-button" onClick={() => handleSong(1)}>▷▶
-                        </button>
+                        <button className="icon-button" onClick={() => handleSong(1)}>▷▶</button>
                         <div className="progress-container">
                             <span className="time">{formatTime(currentTime)}</span>
                             <input
@@ -271,7 +321,7 @@ function App() {
                     </div>
 
                     <div className="extra-controls">
-                        <button className="icon-button" id="likeButton" onClick={likeThisSong}>♥</button>
+                        <button className="icon-button" id="likeButton" onClick={() => likeThisSong(musicId)}>♥</button>
                         <div className="volume-control">
                             <button className="mute" onClick={toggleMute}>
                                 {isMuted ? '🔇' : volume > 0.5 ? '🔊' : '🔉'}
@@ -292,31 +342,27 @@ function App() {
             </div>
 
             <Routes>
-                <Route path="/" element={<Index token={token}/>}/>
                 <Route path="/search" element={<SearchPage/>}/>
                 <Route path="/song" element={
                     <Home
-                        token={token}
                         playing={playing}
                         setPlaying={setPlaying}
                         handleNextSong={handleNextSong}
-                        setMusicId={setMusicId}
                         audioRef={audioRef}
                     />
                 }/>
-                <Route path="/toplist" element={<TopList token={token}/>}/>
-                <Route path="/discover/singer" element={<Singer setMusicId={setMusicId}/>}/>
-                <Route path="/discover/playlists" element={<PlayLists token={token} pageType="pl"/>}/>
-                <Route path="/discover/album" element={<PlayLists token={token} pageType="al"/>}/>
+                <Route path="/toplist" element={<TopList/>}/>
+                <Route path="/discover/singer" element={<Singer/>}/>
+                <Route path="/discover/playlists"
+                       element={<PlayLists setMusicId={setMusicId} pageType="pl" token={null}/>}/>
+                <Route path="/discover/album"
+                       element={<PlayLists setMusicId={setMusicId} pageType="al" token={null}/>}/>
                 <Route path="/playlist"
                        element={<PlaylistDetail token={token} setMusicId={setMusicId} pageType="pl"/>}/>
                 <Route path="/album" element={<PlaylistDetail token={token} setMusicId={setMusicId} pageType="al"/>}/>
-                <Route path="/login" element={<Login/>}/>
-                <Route path="/register" element={<Register/>}/>
-                <Route path="/logout" element={<Logout/>}/>
             </Routes>
         </Router>
     );
-}
+};
 
 export default App;

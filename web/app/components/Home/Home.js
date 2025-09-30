@@ -58,7 +58,7 @@ const Playlist = ({coverUrl, toggleVisable, likeThisSong, shareThisSong, playing
 
 };
 
-function Home({playing, setPlaying, handleNextSong, token, audioRef}) {
+function Home({playing, setPlaying, handleNextSong, audioRef}) {
     const location = useLocation();
     const searchParams = new URLSearchParams(location.search);
 

@@ -5,7 +5,7 @@ import removeFromPlaylist from "../func/removeFromPlaylist";
 import addToPlaylist from "../func/addToPlaylist";
 import {likeThisSong} from "../func/songMenu";
 import {FiPlus, FiMinus, FiHeart, FiMusic, FiUser} from 'react-icons/fi';
-import './SingerDetail.scss';
+
 
 const SingerDetail = () => {
     const [data, setData] = useState(null);
