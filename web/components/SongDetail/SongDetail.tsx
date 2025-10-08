@@ -28,40 +28,26 @@ function SongDetail({musicId, audioElementId = "audio-player"}: SongDetailProps)
     const audioElementRef = useRef<HTMLAudioElement | null>(null)
     const lyricsContainerRef = useRef<HTMLDivElement>(null)
 
-    // 查找audio元素
+    // 监听全局音频事件
     useEffect(() => {
-        const findAudioElement = () => {
-            const audio = document.getElementById(audioElementId) as HTMLAudioElement
-            if (audio) {
-                audioElementRef.current = audio
-                setupAudioListeners(audio)
-                return true
-            }
-            return false
+        const handleAudioTimeUpdate = (event: CustomEvent) => {
+            setCurrentTime(event.detail.currentTime)
+            setIsPlaying(event.detail.isPlaying)
         }
 
-        const setupAudioListeners = (audio: HTMLAudioElement) => {
-            // 播放状态监听
-            audio.addEventListener('play', () => setIsPlaying(true))
-            audio.addEventListener('pause', () => setIsPlaying(false))
-            audio.addEventListener('ended', () => setIsPlaying(false))
-
-            // 时间更新监听
-            const handleTimeUpdate = () => {
-                setCurrentTime(audio.currentTime)
-            }
-            audio.addEventListener('timeupdate', handleTimeUpdate)
+        const handleAudioPlayState = (event: CustomEvent) => {
+            setIsPlaying(event.detail)
         }
 
-        // 尝试立即查找audio元素
-        if (!findAudioElement()) {
-            // 如果没找到，延迟查找（给DOM一些时间加载）
-            const timer = setTimeout(() => {
-                findAudioElement()
-            }, 100)
-            return () => clearTimeout(timer)
+        // 监听自定义事件
+        window.addEventListener('audioTimeUpdate', handleAudioTimeUpdate as EventListener)
+        window.addEventListener('audioPlayState', handleAudioPlayState as EventListener)
+
+        return () => {
+            window.removeEventListener('audioTimeUpdate', handleAudioTimeUpdate as EventListener)
+            window.removeEventListener('audioPlayState', handleAudioPlayState as EventListener)
         }
-    }, [audioElementId])
+    }, [])
 
     // 动画循环更新当前时间（更平滑的更新）
     useEffect(() => {
@@ -210,7 +196,8 @@ function SongDetail({musicId, audioElementId = "audio-player"}: SongDetailProps)
                     className="lyrics-line relative mb-6 transition-all duration-500"
                 >
                     {/* 当前行高亮背景 */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-xl scale-105 -mx-6 px-6 transition-all duration-500 border border-blue-200/30" />
+                    <div
+                        className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-xl scale-105 -mx-6 px-6 transition-all duration-500 border border-blue-200/30"/>
 
                     {/* 播放进度指示条 */}
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-200/30 rounded-b-xl overflow-hidden">
@@ -231,8 +218,8 @@ function SongDetail({musicId, audioElementId = "audio-player"}: SongDetailProps)
                                 <span
                                     key={charIndex}
                                     className={`inline-block transition-all duration-150 ${
-                                        isRevealed 
-                                            ? 'text-blue-700 font-bold scale-110' 
+                                        isRevealed
+                                            ? 'text-blue-700 font-bold scale-110'
                                             : 'text-blue-400 scale-100'
                                     }`}
                                     style={{
@@ -253,8 +240,8 @@ function SongDetail({musicId, audioElementId = "audio-player"}: SongDetailProps)
                                 <div
                                     key={dot}
                                     className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                                        isPlaying 
-                                            ? 'bg-blue-500 animate-pulse' 
+                                        isPlaying
+                                            ? 'bg-blue-500 animate-pulse'
                                             : 'bg-blue-300'
                                     }`}
                                     style={{
@@ -274,8 +261,8 @@ function SongDetail({musicId, audioElementId = "audio-player"}: SongDetailProps)
                 key={index}
                 id={`lyrics-line-${index}`}
                 className={`lyrics-line text-center py-3 transition-all duration-300 text-lg ${
-                    isPast 
-                        ? 'text-gray-400' 
+                    isPast
+                        ? 'text-gray-400'
                         : 'text-gray-600'
                 } ${isPast ? 'scale-95' : 'scale-100'}`}
             >
@@ -309,9 +296,9 @@ function SongDetail({musicId, audioElementId = "audio-player"}: SongDetailProps)
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 h-full flex flex-col">
             {/* 歌曲信息 */}
-            <div className="text-center border-b border-gray-200 pb-4">
+            <div className="text-center border-b border-gray-200 pb-4 flex-shrink-0">
                 <h1 className="text-2xl font-bold text-gray-900 mb-2">{musicName}</h1>
                 <span className="text-sm text-gray-500">{musicArtist}</span>
 
@@ -325,14 +312,14 @@ function SongDetail({musicId, audioElementId = "audio-player"}: SongDetailProps)
             {/* 歌词容器 */}
             <div
                 ref={lyricsContainerRef}
-                className="lyrics-container max-h-96 overflow-y-auto py-4 scroll-smooth"
+                className="lyrics-container flex-1 overflow-y-auto py-4 scroll-smooth"
             >
                 <div className="space-y-2">
                     {lyricsData.length > 0 ? (
                         lyricsData.map((line, index) => renderCharByCharLyrics(line, index))
                     ) : (
                         <div className="text-center text-gray-500 py-8">
-                            暂无歌词
+                            {isLoading ? '加载歌词中...' : '暂无歌词'}
                         </div>
                     )}
                 </div>
@@ -351,21 +338,21 @@ function SongDetail({musicId, audioElementId = "audio-player"}: SongDetailProps)
                     scrollbar-width: thin;
                     scrollbar-color: #cbd5e0 #f7fafc;
                 }
-                
+
                 .lyrics-container::-webkit-scrollbar {
                     width: 6px;
                 }
-                
+
                 .lyrics-container::-webkit-scrollbar-track {
                     background: #f7fafc;
                     border-radius: 3px;
                 }
-                
+
                 .lyrics-container::-webkit-scrollbar-thumb {
                     background: #cbd5e0;
                     border-radius: 3px;
                 }
-                
+
                 .lyrics-container::-webkit-scrollbar-thumb:hover {
                     background: #a0aec0;
                 }
