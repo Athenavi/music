@@ -21,6 +21,7 @@ function SongDetail({ musicId }: SongDetailProps) {
     const [musicName, setMusicName] = useState<string>("")
     const [musicArtist, setMusicArtist] = useState<string>("")
     const [isLoading, setIsLoading] = useState(true)
+    const [hoveredLine, setHoveredLine] = useState<number | null>(null)
 
     const {
         currentTime,
@@ -31,6 +32,20 @@ function SongDetail({ musicId }: SongDetailProps) {
     const animationFrameRef = useRef<number>()
     const lyricsContainerRef = useRef<HTMLDivElement>(null)
 
+    // 处理歌词行点击事件 - 直接操作 audioRef
+    const handleLyricClick = (timeInSeconds: number) => {
+        if (audioRef?.current) {
+            // 直接设置 audio 元素的 currentTime
+            audioRef.current.currentTime = timeInSeconds
+
+            // 如果音频没有在播放，开始播放
+            if (!isPlaying && audioRef.current) {
+                audioRef.current.play().catch(console.error)
+            }
+        }
+    }
+
+    // 其他代码保持不变...
     useEffect(() => {
         const updateTime = () => {
             animationFrameRef.current = requestAnimationFrame(updateTime)
@@ -146,6 +161,24 @@ function SongDetail({ musicId }: SongDetailProps) {
         return lineIndex < getActiveLineIndex()
     }
 
+    // 播放图标组件
+    const PlayIcon = ({ className = "" }: { className?: string }) => (
+        <svg
+            className={`w-5 h-5 ${className}`}
+            fill="currentColor"
+            viewBox="0 0 24 24"
+        >
+            <path d="M8 5v14l11-7z"/>
+        </svg>
+    )
+
+    // 格式化时间显示
+    const formatTime = (seconds: number): string => {
+        const mins = Math.floor(seconds / 60)
+        const secs = Math.floor(seconds % 60)
+        return `${mins}:${secs.toString().padStart(2, '0')}`
+    }
+
     // 网易云音乐风格的逐字歌词渲染
     const renderNetEaseStyleLyrics = (line: LyricsLine, index: number) => {
         const isActive = isLineActive(index)
@@ -174,11 +207,29 @@ function SongDetail({ musicId }: SongDetailProps) {
                 <div
                     key={index}
                     id={`lyrics-line-${index}`}
-                    className="lyrics-line relative mb-8 transition-all duration-500"
+                    className="lyrics-line relative mb-8 transition-all duration-500 group"
+                    onMouseEnter={() => setHoveredLine(index)}
+                    onMouseLeave={() => setHoveredLine(null)}
+                    onClick={() => handleLyricClick(line.timeInSeconds)}
                 >
+                    {/* 播放图标 - 鼠标悬停时显示 */}
+                    <div
+                        className={`absolute left-0 top-1/2 transform -translate-y-1/2 -translate-x-10 transition-all duration-300 cursor-pointer ${
+                            hoveredLine === index ? 'opacity-100 scale-110' : 'opacity-0 scale-90'
+                        }`}
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            handleLyricClick(line.timeInSeconds)
+                        }}
+                    >
+                        <div className="bg-red-500 rounded-full p-2 shadow-lg hover:bg-red-600 transition-colors">
+                            <PlayIcon className="text-white" />
+                        </div>
+                    </div>
+
                     {/* 当前行背景 - 网易云风格 */}
                     <div
-                        className="absolute inset-0 bg-gradient-to-r from-red-500/10 to-pink-500/10 rounded-2xl scale-105 -mx-8 px-8 transition-all duration-500 border border-red-200/20 backdrop-blur-sm"/>
+                        className="absolute inset-0 bg-gradient-to-r from-red-500/10 to-pink-500/10 rounded-2xl scale-105 -mx-8 px-8 transition-all duration-500 border border-red-200/20 backdrop-blur-sm cursor-pointer"/>
 
                     {/* 播放进度指示器 - 网易云风格 */}
                     <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-200/20 rounded-full overflow-hidden">
@@ -190,7 +241,7 @@ function SongDetail({ musicId }: SongDetailProps) {
                         />
                     </div>
 
-                    <p className="relative text-center py-5 transition-all duration-500 transform text-2xl font-medium tracking-wide">
+                    <p className="relative text-center py-5 transition-all duration-500 transform text-2xl font-medium tracking-wide cursor-pointer">
                         {chars.map((char, charIndex) => {
                             const progress = getCharProgress(charIndex)
                             const isCharActive = progress > 0
@@ -267,17 +318,46 @@ function SongDetail({ musicId }: SongDetailProps) {
         }
 
         return (
-            <p
+            <div
                 key={index}
                 id={`lyrics-line-${index}`}
-                className={`lyrics-line text-center py-4 transition-all duration-300 text-xl font-normal tracking-normal ${
+                className={`lyrics-line relative text-center py-4 transition-all duration-300 text-xl font-normal tracking-normal group cursor-pointer ${
                     isPast
                         ? 'text-gray-400 scale-95'
                         : 'text-gray-500 scale-100'
                 } ${isPast ? 'opacity-60' : 'opacity-80'}`}
+                onMouseEnter={() => setHoveredLine(index)}
+                onMouseLeave={() => setHoveredLine(null)}
+                onClick={() => handleLyricClick(line.timeInSeconds)}
             >
-                {line.text}
-            </p>
+                {/* 播放图标 - 鼠标悬停时显示 */}
+                <div
+                    className={`absolute left-0 top-1/2 transform -translate-y-1/2 -translate-x-10 transition-all duration-300 cursor-pointer ${
+                        hoveredLine === index ? 'opacity-100 scale-110' : 'opacity-0 scale-90'
+                    }`}
+                    onClick={(e) => {
+                        e.stopPropagation()
+                        handleLyricClick(line.timeInSeconds)
+                    }}
+                >
+                    <div className="bg-gray-400 rounded-full p-2 shadow-lg hover:bg-gray-500 transition-colors">
+                        <PlayIcon className="text-white" />
+                    </div>
+                </div>
+
+                <p className="relative">
+                    {line.text}
+                </p>
+
+                {/* 时间标签 - 鼠标悬停时显示 */}
+                <div
+                    className={`absolute right-0 top-1/2 transform -translate-y-1/2 translate-x-12 transition-all duration-300 text-xs font-mono ${
+                        hoveredLine === index ? 'opacity-100' : 'opacity-0'
+                    } text-gray-400 bg-white/80 px-2 py-1 rounded-full border`}
+                >
+                    {formatTime(line.timeInSeconds)}
+                </div>
+            </div>
         )
     }
 
@@ -314,7 +394,7 @@ function SongDetail({ musicId }: SongDetailProps) {
 
                 {/* 当前时间显示 */}
                 <div className="mt-3 text-sm text-gray-500 font-mono">
-                    {Math.floor(currentTime / 60)}:{(currentTime % 60).toFixed(2).padStart(5, '0')}
+                    {formatTime(currentTime)}
                     {isPlaying && (
                         <span className="ml-3 inline-flex items-center">
                             <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse mr-1"></span>
@@ -332,7 +412,7 @@ function SongDetail({ musicId }: SongDetailProps) {
                     background: 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(249,250,251,0.8) 100%)'
                 }}
             >
-                <div className="space-y-1">
+                <div className="space-y-1 px-12">
                     {lyricsData.length > 0 ? (
                         lyricsData.map((line, index) => renderNetEaseStyleLyrics(line, index))
                     ) : (
