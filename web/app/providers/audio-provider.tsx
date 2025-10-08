@@ -267,6 +267,22 @@ export function AudioProvider({children}: { children: React.ReactNode }) {
                 }
             }, [])
 
+            useEffect(() => {
+                const audio = audioRef.current
+                if (!audio) return
+
+                const handleTimeUpdate = () => {
+                    setCurrentTime(audio.currentTime)
+                    // 派发全局事件作为备用方案
+                    window.dispatchEvent(new CustomEvent('audioTimeUpdate', {
+                        detail: {currentTime: audio.currentTime}
+                    }))
+                }
+
+                audio.addEventListener('timeupdate', handleTimeUpdate)
+                return () => audio.removeEventListener('timeupdate', handleTimeUpdate)
+            }, [])
+
 
             if (currentIndex !== -1) {
                 const newIndex = currentIndex + page

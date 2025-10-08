@@ -1,8 +1,9 @@
 "use client"
 
 import type React from "react"
-import {useState, useEffect, useRef} from "react"
+import { useState, useEffect, useRef } from "react"
 import API_URL from "@/lib/config"
+import { useAudio } from "@/app/providers/audio-provider"
 
 interface LyricsLine {
     time: string
@@ -15,80 +16,23 @@ interface SongDetailProps {
     musicId: string
 }
 
-function SongDetail({musicId}: SongDetailProps) {
+function SongDetail({ musicId }: SongDetailProps) {
     const [lyricsData, setLyricsData] = useState<LyricsLine[]>([])
     const [musicName, setMusicName] = useState<string>("")
     const [musicArtist, setMusicArtist] = useState<string>("")
-    const [currentTime, setCurrentTime] = useState<number>(0)
     const [isLoading, setIsLoading] = useState(true)
-    const [isPlaying, setIsPlaying] = useState(false)
+
+    const {
+        currentTime,
+        playing: isPlaying,
+        audioRef
+    } = useAudio()
 
     const animationFrameRef = useRef<number>()
     const lyricsContainerRef = useRef<HTMLDivElement>(null)
 
-    // 获取全局音频元素的引用
-    const getAudioElement = (): HTMLAudioElement | null => {
-        // 尝试多种方式获取音频元素
-        const selectors = [
-            'audio',
-            '#audio-player',
-            '[data-audio-element]',
-            'audio[src]'
-        ];
-
-        for (const selector of selectors) {
-            const element = document.querySelector(selector) as HTMLAudioElement;
-            if (element) return element;
-        }
-
-        return null;
-    }
-
-    useEffect(() => {
-        if (isPlaying) {
-            const updateTime = () => {
-                const audioElement = getAudioElement();
-                if (audioElement) {
-                    setCurrentTime(audioElement.currentTime);
-                }
-                animationFrameRef.current = requestAnimationFrame(updateTime);
-            };
-            animationFrameRef.current = requestAnimationFrame(updateTime);
-        } else {
-            if (animationFrameRef.current) {
-                cancelAnimationFrame(animationFrameRef.current);
-            }
-        }
-        return () => {
-            if (animationFrameRef.current) {
-                cancelAnimationFrame(animationFrameRef.current);
-            }
-        };
-    }, [isPlaying])
-
-    useEffect(() => {
-        const audioElement = getAudioElement();
-        if (!audioElement) return;
-
-        const handleTimeUpdate = () => {
-            if (!isPlaying) {
-                setCurrentTime(audioElement.currentTime);
-            }
-        };
-
-        audioElement.addEventListener('timeupdate', handleTimeUpdate);
-        return () => {
-            audioElement.removeEventListener('timeupdate', handleTimeUpdate);
-        };
-    }, [isPlaying]);
-
-    // 动画循环更新当前时间
     useEffect(() => {
         const updateTime = () => {
-            const audioElement = getAudioElement();
-            if (audioElement) {
-                setCurrentTime(audioElement.currentTime)
-            }
             animationFrameRef.current = requestAnimationFrame(updateTime)
         }
 
@@ -103,7 +47,6 @@ function SongDetail({musicId}: SongDetailProps) {
         }
     }, [isPlaying])
 
-    // 其他 useEffect 保持不变...
     useEffect(() => {
         const fetchSongDetails = async () => {
             try {
@@ -173,7 +116,6 @@ function SongDetail({musicId}: SongDetailProps) {
         return duration > 0 ? duration : 3
     }
 
-    // 获取当前活跃的歌词行
     const getActiveLineIndex = (): number => {
         for (let i = lyricsData.length - 1; i >= 0; i--) {
             if (currentTime >= lyricsData[i].timeInSeconds) {
@@ -183,7 +125,6 @@ function SongDetail({musicId}: SongDetailProps) {
         return -1
     }
 
-    // 自动滚动到当前歌词
     useEffect(() => {
         const activeIndex = getActiveLineIndex()
         if (activeIndex >= 0 && lyricsContainerRef.current) {
@@ -205,22 +146,27 @@ function SongDetail({musicId}: SongDetailProps) {
         return lineIndex < getActiveLineIndex()
     }
 
-    const renderCharByCharLyrics = (line: LyricsLine, index: number) => {
+    // 网易云音乐风格的逐字歌词渲染
+    const renderNetEaseStyleLyrics = (line: LyricsLine, index: number) => {
         const isActive = isLineActive(index)
         const isPast = isLinePast(index)
         const duration = calculateDuration(line.time, line.nextTime)
         const chars = line.text.split('')
         const charDuration = duration / chars.length
 
-        // 计算当前字符的进度（0到1）
+        // 计算当前字符的进度
         const getCharProgress = (charIndex: number): number => {
             if (!isActive) return 0
 
             const lineStartTime = line.timeInSeconds
             const elapsedInLine = currentTime - lineStartTime
+            const charStartTime = charIndex * charDuration
             const charEndTime = (charIndex + 1) * charDuration
 
-            return Math.min(Math.max(elapsedInLine / charEndTime, 0), 1)
+            if (elapsedInLine < charStartTime) return 0
+            if (elapsedInLine >= charEndTime) return 1
+
+            return (elapsedInLine - charStartTime) / charDuration
         }
 
         if (isActive) {
@@ -228,59 +174,88 @@ function SongDetail({musicId}: SongDetailProps) {
                 <div
                     key={index}
                     id={`lyrics-line-${index}`}
-                    className="lyrics-line relative mb-6 transition-all duration-500"
+                    className="lyrics-line relative mb-8 transition-all duration-500"
                 >
-                    {/* 当前行高亮背景 */}
+                    {/* 当前行背景 - 网易云风格 */}
                     <div
-                        className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-xl scale-105 -mx-6 px-6 transition-all duration-500 border border-blue-200/30"/>
+                        className="absolute inset-0 bg-gradient-to-r from-red-500/10 to-pink-500/10 rounded-2xl scale-105 -mx-8 px-8 transition-all duration-500 border border-red-200/20 backdrop-blur-sm"/>
 
-                    {/* 播放进度指示条 */}
-                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-200/30 rounded-b-xl overflow-hidden">
+                    {/* 播放进度指示器 - 网易云风格 */}
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-200/20 rounded-full overflow-hidden">
                         <div
-                            className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-100"
+                            className="h-full bg-gradient-to-r from-red-500 to-pink-500 transition-all duration-100"
                             style={{
                                 width: `${((currentTime - line.timeInSeconds) / duration) * 100}%`
                             }}
                         />
                     </div>
 
-                    <p className="relative text-center py-4 transition-all duration-500 transform text-xl">
+                    <p className="relative text-center py-5 transition-all duration-500 transform text-2xl font-medium tracking-wide">
                         {chars.map((char, charIndex) => {
                             const progress = getCharProgress(charIndex)
-                            const isRevealed = progress > 0
+                            const isCharActive = progress > 0
 
                             return (
                                 <span
                                     key={charIndex}
-                                    className={`inline-block transition-all duration-150 ${
-                                        isRevealed
-                                            ? 'text-blue-700 font-bold scale-110'
-                                            : 'text-blue-400 scale-100'
-                                    }`}
-                                    style={{
-                                        transform: `scale(${isRevealed ? 1.1 : 1}) translateY(${isRevealed ? '-2px' : '0px'})`,
-                                        filter: isRevealed ? 'drop-shadow(0 2px 4px rgb(0 0 0 / 0.1))' : 'none'
-                                    }}
+                                    className="inline-block relative"
                                 >
-                                    {char === ' ' ? '\u00A0' : char}
+                                    {/* 字符背景 - 网易云逐字效果 */}
+                                    <span
+                                        className={`absolute inset-0 bg-gradient-to-r from-red-500 to-pink-500 transition-all duration-150 rounded-sm ${
+                                            isCharActive ? 'opacity-20' : 'opacity-0'
+                                        }`}
+                                        style={{
+                                            transform: `scaleX(${progress})`,
+                                            transformOrigin: 'left center'
+                                        }}
+                                    />
+
+                                    {/* 字符主体 */}
+                                    <span
+                                        className={`relative inline-block transition-all duration-150 ${
+                                            isCharActive
+                                                ? 'text-red-700 font-semibold scale-105'
+                                                : 'text-gray-600 scale-100'
+                                        } ${
+                                            progress === 1 ? 'drop-shadow-[0_2px_4px_rgba(239,68,68,0.3)]' : ''
+                                        }`}
+                                        style={{
+                                            transform: `scale(${isCharActive ? 1.05 : 1}) translateY(${isCharActive ? '-1px' : '0px'})`,
+                                            filter: isCharActive ? 'none' : 'none'
+                                        }}
+                                    >
+                                        {char === ' ' ? '\u00A0' : char}
+                                    </span>
+
+                                    {/* 字符光标效果 - 网易云风格 */}
+                                    {isCharActive && progress > 0 && progress < 1 && (
+                                        <span
+                                            className="absolute -bottom-1 left-0 w-full h-0.5 bg-red-500 rounded-full"
+                                            style={{
+                                                transform: `scaleX(${progress})`,
+                                                transformOrigin: 'left center'
+                                            }}
+                                        />
+                                    )}
                                 </span>
                             )
                         })}
                     </p>
 
-                    {/* 播放指示器 */}
-                    <div className="absolute left-1/2 -bottom-3 transform -translate-x-1/2">
+                    {/* 播放指示器 - 网易云风格 */}
+                    <div className="absolute left-1/2 -bottom-4 transform -translate-x-1/2">
                         <div className="flex space-x-1">
                             {[1, 2, 3].map((dot) => (
                                 <div
                                     key={dot}
-                                    className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                                    className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
                                         isPlaying
-                                            ? 'bg-blue-500 animate-pulse'
-                                            : 'bg-blue-300'
+                                            ? 'bg-red-500 animate-bounce'
+                                            : 'bg-red-300'
                                     }`}
                                     style={{
-                                        animationDelay: `${dot * 0.2}s`,
+                                        animationDelay: `${dot * 0.1}s`,
                                         opacity: isPlaying ? 1 : 0.6
                                     }}
                                 />
@@ -295,19 +270,16 @@ function SongDetail({musicId}: SongDetailProps) {
             <p
                 key={index}
                 id={`lyrics-line-${index}`}
-                className={`lyrics-line text-center py-3 transition-all duration-300 text-lg ${
+                className={`lyrics-line text-center py-4 transition-all duration-300 text-xl font-normal tracking-normal ${
                     isPast
-                        ? 'text-gray-400'
-                        : 'text-gray-600'
-                } ${isPast ? 'scale-95' : 'scale-100'}`}
+                        ? 'text-gray-400 scale-95'
+                        : 'text-gray-500 scale-100'
+                } ${isPast ? 'opacity-60' : 'opacity-80'}`}
             >
                 {line.text}
             </p>
         )
     }
-
-    // 检查是否有音频元素
-    const hasAudioElement = !!getAudioElement();
 
     // 加载状态
     if (isLoading) {
@@ -335,64 +307,76 @@ function SongDetail({musicId}: SongDetailProps) {
 
     return (
         <div className="space-y-6 h-full flex flex-col">
-            {/* 歌曲信息 */}
-            <div className="text-center border-b border-gray-200 pb-4 flex-shrink-0">
-                <h1 className="text-2xl font-bold text-gray-900 mb-2">{musicName}</h1>
-                <span className="text-sm text-gray-500">{musicArtist}</span>
+            {/* 歌曲信息 - 网易云风格 */}
+            <div className="text-center border-b border-gray-100 pb-6 flex-shrink-0">
+                <h1 className="text-3xl font-bold text-gray-900 mb-3 tracking-tight">{musicName}</h1>
+                <span className="text-base text-gray-600 font-medium">{musicArtist}</span>
 
                 {/* 当前时间显示 */}
-                <div className="mt-2 text-xs text-gray-400">
-                    当前时间: {Math.floor(currentTime / 60)}:{(currentTime % 60).toFixed(2).padStart(5, '0')}
-                    {isPlaying && <span className="ml-2 text-green-500">● 播放中</span>}
+                <div className="mt-3 text-sm text-gray-500 font-mono">
+                    {Math.floor(currentTime / 60)}:{(currentTime % 60).toFixed(2).padStart(5, '0')}
+                    {isPlaying && (
+                        <span className="ml-3 inline-flex items-center">
+                            <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse mr-1"></span>
+                            播放中
+                        </span>
+                    )}
                 </div>
             </div>
 
             {/* 歌词容器 */}
             <div
                 ref={lyricsContainerRef}
-                className="lyrics-container flex-1 overflow-y-auto py-4 scroll-smooth"
+                className="lyrics-container flex-1 overflow-y-auto py-8 scroll-smooth"
+                style={{
+                    background: 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(249,250,251,0.8) 100%)'
+                }}
             >
-                <div className="space-y-2">
+                <div className="space-y-1">
                     {lyricsData.length > 0 ? (
-                        lyricsData.map((line, index) => renderCharByCharLyrics(line, index))
+                        lyricsData.map((line, index) => renderNetEaseStyleLyrics(line, index))
                     ) : (
-                        <div className="text-center text-gray-500 py-8">
+                        <div className="text-center text-gray-500 py-12 text-lg">
                             {isLoading ? '加载歌词中...' : '暂无歌词'}
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* 音频状态提示 */}
-            {!hasAudioElement && (
-                <div className="text-center text-orange-500 text-sm bg-orange-50 py-2 rounded-lg">
-                    未检测到音频播放器，歌词将不会自动滚动
-                </div>
-            )}
-
             {/* 自定义样式 */}
             <style jsx>{`
                 .lyrics-container {
                     scrollbar-width: thin;
-                    scrollbar-color: #cbd5e0 #f7fafc;
+                    scrollbar-color: #e5e7eb #f9fafb;
                 }
 
                 .lyrics-container::-webkit-scrollbar {
-                    width: 6px;
+                    width: 4px;
                 }
 
                 .lyrics-container::-webkit-scrollbar-track {
-                    background: #f7fafc;
-                    border-radius: 3px;
+                    background: #f9fafb;
+                    border-radius: 2px;
                 }
 
                 .lyrics-container::-webkit-scrollbar-thumb {
-                    background: #cbd5e0;
-                    border-radius: 3px;
+                    background: #e5e7eb;
+                    border-radius: 2px;
                 }
 
                 .lyrics-container::-webkit-scrollbar-thumb:hover {
-                    background: #a0aec0;
+                    background: #d1d5db;
+                }
+
+                /* 网易云音乐风格的动画 */
+                @keyframes charGlow {
+                    0% { text-shadow: 0 0 0px rgba(239, 68, 68, 0); }
+                    50% { text-shadow: 0 0 8px rgba(239, 68, 68, 0.3); }
+                    100% { text-shadow: 0 0 0px rgba(239, 68, 68, 0); }
+                }
+
+                .char-active {
+                    animation: charGlow 0.6s ease-in-out;
                 }
             `}</style>
         </div>
