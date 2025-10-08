@@ -28,7 +28,8 @@ export default function HomePage() {
                     setMusicId={setMusicId}
                 />
             </div>
-            <div style={{flex: 1, height: '100vh'}}><SongDetail musicId={musicId}/></div>
+            <div style={{flex: 1}}><SongDetail musicId={musicId}/>
+            </div>
             <button
                 style={{
                     position: 'absolute',
