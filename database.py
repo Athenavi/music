@@ -1,7 +1,8 @@
+import os
+
 import mysql.connector
 import mysql.connector.pooling
 from dotenv import load_dotenv
-import os
 
 
 def get_db_connection(pool_name="mypool", pool_size=5):
@@ -54,6 +55,37 @@ def get_db_connection(pool_name="mypool", pool_size=5):
         return db_pool
     except mysql.connector.Error as err:
         raise mysql.connector.Error(f"Failed to create connection pool: {err}") from err
+
+
+def get_database_url():
+    # 加载 .env 文件
+    load_dotenv()
+    db_host = os.getenv('DATABASE_HOST')
+    db_port = os.getenv('DATABASE_PORT')
+    db_user = os.getenv('DATABASE_USER')
+    db_password = os.getenv('DATABASE_PASSWORD')
+    db_name = os.getenv('DATABASE_NAME')
+
+    # 验证必要的环境变量
+    if not all([db_host, db_port, db_user, db_password, db_name]):
+        missing_vars = []
+        if not db_host: missing_vars.append('DATABASE_HOST')
+        if not db_port: missing_vars.append('DATABASE_PORT')
+        if not db_user: missing_vars.append('DATABASE_USER')
+        if not db_password: missing_vars.append('DATABASE_PASSWORD')
+        if not db_name: missing_vars.append('DATABASE_NAME')
+
+        raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+
+    # 确保端口是有效的整数
+    try:
+        port = int(db_port)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Invalid DATABASE_PORT: {db_port}. Must be a valid integer.") from e
+
+    # 构造数据库连接字符串
+    db_url = f"mysql+aiomysql://{db_user}:{db_password}@{db_host}:{port}/{db_name}"
+    return db_url
 
 
 def test_database_connection():

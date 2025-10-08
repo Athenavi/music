@@ -4,1332 +4,706 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import datetime
 from io import BytesIO
+from typing import Optional
 
-import bcrypt
-import mysql
 import requests
 from PIL import Image
+from databases import Database
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request, send_file, abort, make_response, session
-from flask_caching import Cache
-from flask_cors import CORS
-from flask_jwt_extended import (JWTManager, jwt_required, create_access_token, get_jwt_identity, )
-from mutagen.id3 import ID3, APIC
-from mutagen.mp3 import MP3
+from fastapi import (
+    FastAPI, HTTPException, Response,
+    Query, Path
+)
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.security import HTTPBearer
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from sqlalchemy import MetaData, Table, Column, Integer, String, Text, DateTime
 
-from database import test_database_connection, get_db_connection
+from database import get_database_url
 
-app = Flask(__name__)
-app.secret_key = 'your_secret_key'
-app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=3)
-CORS(app)
-cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})
-
-# 配置JWT
-app.config["JWT_SECRET_KEY"] = "super-secret"
-jwt = JWTManager(app)
-
-base_dir = os.path.dirname(os.path.abspath(__file__))
-print(base_dir)
-
-logging.basicConfig(filename='user.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# 加载 .env 文件
+# 加载环境变量
 load_dotenv()
 
+# 配置日志
+logging.basicConfig(
+    filename='user.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
+# 数据库配置
+DATABASE_URL = get_database_url()
+database = Database(DATABASE_URL)
+metadata = MetaData()
+
+songs = Table(
+    'songs', metadata,
+    Column('SongID', Integer, primary_key=True),
+    Column('Title', String(255)),
+    Column('ArtistID', Integer),
+    Column('AlbumID', Integer),
+    Column('FilePath', String(500)),
+    Column('CoverImagePath', String(500)),
+    Column('Lyrics', Text),
+)
+
+albums = Table(
+    'albums', metadata,
+    Column('AlbumID', Integer, primary_key=True),
+    Column('Title', String(255)),
+    Column('ReleaseDate', DateTime),
+)
+
+playlists = Table(
+    'playlists', metadata,
+    Column('PlaylistID', Integer, primary_key=True),
+    Column('Name', String(255)),
+    Column('Description', Text),
+    Column('UserID', Integer),
+)
+
+artists = Table(
+    'artists', metadata,
+    Column('ArtistID', Integer, primary_key=True),
+    Column('Name', String(255)),
+)
+
+
+# Pydantic模型
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+
+class CountUsersRequest(BaseModel):
+    userIP: str
+    userAgent: str
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class TokenData(BaseModel):
+    user_id: Optional[str] = None
+
+
+# JWT配置
+JWT_SECRET_KEY = "super-secret"
+ALGORITHM = "HS256"
+security = HTTPBearer()
+
+
+# 获取配置
 def get_general_conf():
-    domain = os.getenv('DOMAIN')
-    title = os.getenv('TITLE')
-    api_url = os.getenv('API_URL')
-
+    domain = os.getenv('DOMAIN', 'http://localhost:10086')
+    title = os.getenv('TITLE', 'Music API')
+    api_url = os.getenv('API_URL', 'https://api.example.com/')
     return domain, title, api_url
 
 
 domain, sitename, API_URL = get_general_conf()
-print(domain, sitename, API_URL)
 
 
-@app.route('/api/count_users', methods=['POST'])
-def count_users():
-    # 获取请求体中的数据
-    data = request.json
-    user_ip = data.get('userIP')
-    user_agent = data.get('userAgent')
-
-    # 记录用户信息到日志文件
-    logging.info(f"User IP: {user_ip}, User Agent: {user_agent}")
-
-    # 返回一个响应
-    return jsonify({"message": "User data received", "userIP": user_ip}), 200
+# 应用生命周期
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 启动时
+    await database.connect()
+    print("Database connected successfully")
+    yield
+    # 关闭时
+    await database.disconnect()
+    print("Database disconnected")
 
 
-def validate_password(password_hash, password):
-    return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
+# 创建FastAPI应用
+app = FastAPI(
+    title="Music API",
+    description="基于FastAPI的音乐服务API",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# CORS配置
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 挂载静态文件目录
+base_dir = os.path.dirname(os.path.abspath(__file__))
+app.mount("/storage", StaticFiles(directory=os.path.join(base_dir, "storage")), name="storage")
+app.mount("/cover", StaticFiles(directory=os.path.join(base_dir, "cover")), name="cover")
+app.mount("/lrc", StaticFiles(directory=os.path.join(base_dir, "lrc")), name="lrc")
 
 
-@app.route('/login', methods=['POST'])
-def login():
-    username = request.args.get('username')
-    password = request.args.get('pwd')
+# 基础路由
+@app.get("/")
+async def home():
+    return {"message": "service is running"}
 
-    if username is None or password is None:
-        return jsonify({"msg": "Missing username or password"}), 400
 
-    db = get_db_connection().get_connection()
-    cursor = db.cursor()
+@app.post("/api/count_users")
+async def count_users(data: CountUsersRequest):
+    logging.info(f"User IP: {data.userIP}, User Agent: {data.userAgent}")
+    return {"message": "User data received", "userIP": data.userIP}
 
+
+# 搜索和发现
+CACHE_DIR = 'temp/search'
+CACHE_EXPIRY = 24 * 60 * 60  # 24小时
+
+
+@app.get("/api/search")
+async def api_search(keyword: str = Query(..., description="搜索关键词")):
+    if not keyword:
+        raise HTTPException(status_code=400, detail="Keyword is required")
+
+    cache_file_path = os.path.join(CACHE_DIR, f"{keyword}.json")
+
+    # 检查缓存
+    if os.path.exists(cache_file_path):
+        file_mod_time = os.path.getmtime(cache_file_path)
+        current_time = time.time()
+        if (current_time - file_mod_time) < CACHE_EXPIRY:
+            with open(cache_file_path, 'r', encoding='utf-8') as cache_file:
+                return json.load(cache_file)
+
+    # 从API获取数据
     try:
-        query = "SELECT UserID, Username, Password FROM users WHERE Username = %s;"
-        cursor.execute(query, (username,))
-        result = cursor.fetchone()
+        search_api_url = f'{API_URL}search?keywords={keyword}'
+        response = requests.get(search_api_url, timeout=3)
+        data = response.json()
 
-        if result is None:
-            return jsonify({"msg": "Bad username or password"}), 401
+        # 保存到缓存
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        with open(cache_file_path, 'w', encoding='utf-8') as cache_file:
+            json.dump(data, cache_file, ensure_ascii=False, indent=2)
 
-        if validate_password(result[2], password):
-            session.permanent = True
-            app.permanent_session_lifetime = timedelta(minutes=120)  # 2 hours
-            session['user_id'] = result[0]
-            access_token = create_access_token(identity=result[0])
-            return jsonify({"access_token": access_token}), 200
-        else:
-            return jsonify({"msg": "Bad username or password"}), 401
-
-    except Exception as e:
-        return jsonify({"msg": str(e)}), 500
-
-    finally:
-        cursor.close()
-        db.close()
+        return data
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=408, detail="Request timeout")
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"External API error: {str(e)}")
 
 
-@app.route('/protected')
-@jwt_required()
-def protected():
-    current_user = get_jwt_identity()
-    return jsonify(logged_in_as=current_user), 200
-
-
-@app.route('/refresh', methods=['POST'])
-@jwt_required(refresh=True)
-def refresh():
-    """ 刷新JWT token的路由 """
-    current_user = get_jwt_identity()
-    new_access_token = create_access_token(identity=current_user)
-    return jsonify({'access_token': new_access_token}), 200
-
-
-@app.route('/')
-def home():
-    """ 默认路由，不需要认证 """
-    return jsonify({"message": "service is running "})
-
-
-@app.route('/login/cellphone', methods=['GET'])
-def login_cellphone():
-    phone = request.args.get('phone')
-    password = request.args.get('password')
-    md5_password = request.args.get('md5_password')
-    captcha = request.args.get('captcha')
-    countrycode = request.args.get('countrycode', '86')
-    # 这里你应该添加登录处理逻辑
-    return jsonify({"message": "登录成功", "phone": phone, "countrycode": countrycode})
-
-
-# 生成登录链接并保存到缓存
-def generate_login_url():
-    login_key = str(uuid.uuid4())
-    # 在这里将登录链接保存到Cache
-    return login_key
-
-
-qr_api_url = "http://api.7trees.cn/qrcode/"
-
-
-@app.route('/login/qr/key', methods=['GET'])
-def login_qr_key():
-    # 生成登录链接
-    login_key = generate_login_url()
-
-    # 登陆链接
-    login_url = domain + "login/callback?key=" + login_key
-
-    return jsonify({"code": "200", "key": login_key, "qr_url": ''})
-
-
-@app.route('/login/callback', methods=['POST'])
-def login_callback():
-    # 根据传入的参数获取登录key
-    login_key = request.form.get('key')
-
-    # 在这里根据登录key从缓存中获取用户信息，并执行登录逻辑
-    # 登录成功后返回相应的响应
-
-    return jsonify({"code": "200", "message": "Login successful"})
-
-
-@app.route('/login/qr/check', methods=['GET'])
-def login_qr_check():
-    key = request.args.get('key')
-    # 添加检查二维码扫描状态逻辑
-    return jsonify({"message": "二维码扫描状态检查", "key": key, "status": "803"})
-
-
-@app.route('/register/anonimous', methods=['GET'])
-def register_anonimous():
-    # 添加游客登录逻辑
-    return jsonify({"message": "游客登录成功", "cookie": "anonimous_cookie"})
-
-
-@app.route('/login/refresh', methods=['GET'])
-def refresh_login():
-    # 此处仅为示例，具体实现需要根据实际需求编写
-    return jsonify(message="Login refreshed successfully."), 200
-
-
-@app.route('/captcha/sent', methods=['GET'])
-def send_captcha():
-    phone = request.args.get('phone')
-    ctcode = request.args.get('ctcode', '86')
-    # 具体实现
-    return jsonify(message="Captcha sent successfully."), 200
-
-
-@app.route('/captcha/verify', methods=['GET'])
-def verify_captcha():
-    phone = request.args.get('phone')
-    captcha = request.args.get('captcha')
-    ctcode = request.args.get('ctcode', '86')
-    # 具体实现
-    return jsonify(message="Captcha verified successfully."), 200
-
-
-@app.route('/register/cellphone', methods=['GET'])
-def register():
-    # 获取必要参数
-    captcha = request.args.get('captcha')
-    phone = request.args.get('phone')
-    password = request.args.get('password')
-    nickname = request.args.get('nickname')
-    countrycode = request.args.get('countrycode', '86')
-    # 具体实现
-    return jsonify(message="Registered successfully."), 200
-
-
-@app.route('/cellphone/existence/check', methods=['GET'])
-def check_phone_existence():
-    phone = request.args.get('phone')
-    countrycode = request.args.get('countrycode', '86')
-    # 具体实现
-    return jsonify(existence=True), 200
-
-
-@app.route('/activate/init/profile', methods=['POST'])
-def init_profile():
-    nickname = request.args.get('nickname')
-    # 具体实现
-    return jsonify(message="Profile initialized successfully."), 200
-
-
-@app.route('/nickname/check', methods=['GET'])
-def check_nickname():
-    nickname = request.args.get('nickname')
-    # 具体实现
-    return jsonify(available=True), 200
-
-
-@app.route('/rebind', methods=['GET'])
-def rebind_phone():
-    oldcaptcha = request.args.get('oldcaptcha')
-    captcha = request.args.get('captcha')
-    phone = request.args.get('phone')
-    ctcode = request.args.get('ctcode', '86')
-    # 具体实现
-    return jsonify(message="Phone rebinded successfully."), 200
-
-
-@app.route('/logout', methods=['GET'])
-def logout():
-    # 具体实现
-    return jsonify(message="Logged out successfully."), 200
-
-
-@app.route('/login/status', methods=['GET'])
-def login_status():
-    # 具体实现
-    return jsonify(status="Logged in"), 200
-
-
-@app.route('/api/Recommend', methods=['GET'])
-def api_Recommend():
-    pageType = request.args.get('pageType') or 'al'
-    db = get_db_connection().get_connection()
-    cursor = db.cursor()
-
-    # 定义一个函数来执行查询并返回结果
-    def execute_query(query):
-        try:
-            cursor.execute(query)
-            results = cursor.fetchall()
-            if results:
-                return results
-        except Exception:
-            return 'error', 404
-        finally:
-            cursor.close()
-            db.close()
-
-    # 根据不同的 pageType 执行不同的查询
-    if pageType == 'al':
-        return execute_query("SELECT AlbumID,Title,ReleaseDate FROM albums;")
-    elif pageType == 'pl':
-        return execute_query("SELECT PlaylistID,Name,Description FROM playlists;")
+@app.get("/api/Recommend")
+async def api_Recommend(pageType: str = Query("al", description="页面类型: al-专辑, pl-歌单")):
+    if pageType == "al":
+        query = albums.select().with_only_columns([albums.c.AlbumID, albums.c.Title, albums.c.ReleaseDate])
+    elif pageType == "pl":
+        query = playlists.select().with_only_columns(
+            [playlists.c.PlaylistID, playlists.c.Name, playlists.c.Description])
     else:
-        return 'error', 404
+        raise HTTPException(status_code=400, detail="Invalid pageType")
 
-
-CACHE_DIR = 'temp/search'  # 缓存目录
-CACHE_EXPIRY = 24 * 60 * 60  # 缓存过期时间，单位为秒（24小时）
-
-
-@app.route('/api/search', methods=['GET'])
-def api_search():
-    kw = request.args.get('keyword')
-    if kw:
-        # 构建缓存文件路径
-        cache_file_path = os.path.join(CACHE_DIR, f"{kw}.json")
-
-        # 检查缓存文件是否存在及有效性
-        if os.path.exists(cache_file_path):
-            file_mod_time = os.path.getmtime(cache_file_path)
-            current_time = time.time()
-
-            # 如果缓存文件未过期，直接读取缓存
-            if (current_time - file_mod_time) < CACHE_EXPIRY:
-                with open(cache_file_path, 'r') as cache_file:
-                    data = json.load(cache_file)
-                return data
-
-        # 如果缓存无效或不存在，从API请求数据
-        try:
-            search_api_url = f'{API_URL}search?keywords={kw}'
-            response = requests.get(search_api_url, timeout=3)  # 设置超时时间为3秒
-            data = response.json()
-            # print(data)
-
-            # 将新获取的数据写入缓存文件
-            os.makedirs(CACHE_DIR, exist_ok=True)  # 创建缓存目录（如果不存在）
-            with open(cache_file_path, 'w') as cache_file:
-                json.dump(data, cache_file)
-
-        except (requests.exceptions.Timeout, requests.exceptions.ProxyError):
-            data = {}
-
-    return data
-
-
-@app.route('/api/singer', methods=['GET'])
-def api_singer():
-    uid = int(request.args.get('uid', 0))
-
-    if uid:
-        singer_data = singer_detail(uid)
-        if isinstance(singer_data, dict) and singer_data.get('error'):
-            return jsonify({'error': 'No singer found'}), 404
-        return jsonify({"歌手": singer_data})
-
-    all_singers = get_all_singer()
-    if isinstance(all_singers, dict) and all_singers.get('error'):
-        return jsonify({'error': 'No singers found'}), 404
-    return jsonify({"歌手": all_singers})
-
-
-def get_all_singer():
     try:
-        db = get_db_connection().get_connection()
-        cursor = db.cursor()
-        query = "SELECT DISTINCT artists.ArtistID, artists.Name FROM songs INNER JOIN artists ON songs.ArtistID = artists.ArtistID;"
-        cursor.execute(query)
-        playlists = cursor.fetchall()
-        if playlists:
-            print(playlists)
-            return playlists  # 返回字典对象
-        else:
-            return {'error': 'No playlists found'}
+        results = await database.fetch_all(query)
+        return [dict(row) for row in results]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 歌手相关
+@app.get("/api/singer")
+async def api_singer(uid: int = Query(None, description="歌手ID")):
+    if uid:
+        singer_data = await singer_detail(uid)
+        if isinstance(singer_data, dict) and singer_data.get('error'):
+            raise HTTPException(status_code=404, detail=singer_data['error'])
+        return {"歌手": singer_data}
+
+    all_singers = await get_all_singer()
+    if isinstance(all_singers, dict) and all_singers.get('error'):
+        raise HTTPException(status_code=404, detail=all_singers['error'])
+    return {"歌手": all_singers}
+
+
+async def get_all_singer():
+    try:
+        query = """
+                SELECT DISTINCT artists.ArtistID, artists.Name
+                FROM songs
+                         INNER JOIN artists ON songs.ArtistID = artists.ArtistID \
+                """
+        results = await database.fetch_all(query)
+        return [dict(row) for row in results]
     except Exception as e:
         return {'error': str(e)}
-    finally:
-        cursor.close()
-        db.close()
 
 
-def singer_detail(uid):
-    if uid:
-        try:
-            db = get_db_connection().get_connection()
-            cursor = db.cursor()
-            query = "SELECT songs.SongID, songs.Title, artists.Name FROM songs INNER JOIN artists ON songs.ArtistID = artists.ArtistID WHERE artists.ArtistID = {};".format(
-                uid)
-            print(query)
-            cursor.execute(query)
-            playlists = cursor.fetchall()
-            if playlists:
-                return playlists
-            else:
-                return {'error': 'No playlists found'}
-        except Exception as e:
-            return {'error': str(e)}
-        finally:
-            cursor.close()
-            db.close()
-    else:
-        return {'error': '歌手不存在'}
-
-
-@app.route('/api/Detail', methods=['GET'])
-@cache.cached(timeout=300, query_string=True)  # 使用缓存装饰器，并设置超时时间为300秒（5分钟）
-def api_PlayListDetail():
-    pid = request.args.get('pid')
-    pageType = request.args.get('pageType')
-    if pid and pageType == 'pl':
-        converted_playlist = {"歌曲列表": song_name(pid).json}
-        return jsonify(converted_playlist)  # 使用 jsonify 返回 JSON 响应
-    elif pid and pageType == 'al':
-        converted_playlist = {"歌曲列表": album_detail(pid).json}
-        return jsonify(converted_playlist)  # 使用 jsonify 返回 JSON 响应
-    else:
-        return jsonify('error'), 404
-
-
-def album_detail(pid):
-    if pid:
-        try:
-            db = get_db_connection().get_connection()
-            cursor = db.cursor()
-            query = "SELECT songs.SongID, songs.Title, artists.Name FROM songs INNER JOIN artists ON songs.ArtistID = artists.ArtistID WHERE songs.AlbumID = {};".format(
-                pid)
-            print(query)
-            cursor.execute(query)
-            playlists = cursor.fetchall()
-            if playlists:
-                print(playlists)
-                return jsonify(playlists)
-            else:
-                pass
-        except Exception as e:
-            pass
-        finally:
-            cursor.close()
-            db.close()
-    else:
-        return '专辑不存在'
-
-
-def list_by_uid(uid, list_id):
-    if uid and list_id:
-        try:
-            db = get_db_connection().get_connection()
-            cursor = db.cursor()
-            query = "SELECT * FROM `playlists` WHERE UserID={} and PlaylistID={};".format(uid, list_id)
-            print(query)
-            cursor.execute(query)
-            playlists = cursor.fetchall()
-            if playlists:
-                print(playlists)
-                return jsonify(playlists)
-            else:
-                pass
-        except Exception as e:
-            pass
-        finally:
-            cursor.close()
-            db.close()
-    else:
-        pass
-
-    return abort(404, description="暂无推荐")
-
-
-@app.route('/api/toplist', methods=['GET'])
-def api_topLists():
-    db = get_db_connection().get_connection()
-    cursor = db.cursor()
+async def singer_detail(uid: int):
     try:
-        cursor.execute("SELECT TargetID FROM `hot` WHERE Type='SONG';")
-        results = cursor.fetchall()
-        hot_id_list = []
-        if results:
-            for i in results:
-                hot_id_list.append(i[0])
-            str_list = ','.join(str(x) for x in hot_id_list)
-            hot_song_list = song_name_list(str_list)
-            return jsonify(hot_song_list)
-    except Exception:
-        return 'error', 404
-    finally:
-        cursor.close()
-        db.close()
+        query = """
+                SELECT songs.SongID, songs.Title, artists.Name
+                FROM songs
+                         INNER JOIN artists ON songs.ArtistID = artists.ArtistID
+                WHERE artists.ArtistID = :artist_id \
+                """
+        results = await database.fetch_all(query, {"artist_id": uid})
+        return [dict(row) for row in results] if results else {'error': 'No songs found for this artist'}
+    except Exception as e:
+        return {'error': str(e)}
 
 
-@app.route('/api/album', methods=['GET'])
-def api_album():
-    db = get_db_connection().get_connection()
-    cursor = db.cursor()
+# 详情页面
+@app.get("/api/Detail")
+async def api_PlayListDetail(
+        pid: int = Query(..., description="ID"),
+        pageType: str = Query(..., description="类型: pl-歌单, al-专辑")
+):
+    if pageType == 'pl':
+        songs_data = await song_name(pid=pid)
+        return {"歌曲列表": songs_data}
+    elif pageType == 'al':
+        album_data = await album_detail(pid)
+        return {"歌曲列表": album_data}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid pageType")
+
+
+async def album_detail(pid: int):
     try:
-        cursor.execute("SELECT AlbumID,Title,ReleaseDate FROM albums;")
-        results = cursor.fetchall()
-        if results:
-            return results
-    except Exception:
-        return 'error', 404
-    finally:
-        cursor.close()
-        db.close()
+        query = """
+                SELECT songs.SongID, songs.Title, artists.Name
+                FROM songs
+                         INNER JOIN artists ON songs.ArtistID = artists.ArtistID
+                WHERE songs.AlbumID = :album_id \
+                """
+        results = await database.fetch_all(query, {"album_id": pid})
+        return [dict(row) for row in results] if results else []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.route('/api/userSongList', methods=['GET'])
-def api_userSongList(pid=0):
-    pid = request.args.get('pid')
-    if pid:
-        converted_playlist = {"播放列表": song_name(pid=1).json}
-        return converted_playlist
-    else:
-        return 'error', 404
+# 音乐文件服务
+@app.get("/music/{id}.mp3")
+async def get_music_file(id: int = Path(..., description="歌曲ID")):
+    music_file_path = os.path.join(base_dir, "storage", f"{id}.mp3")
+
+    # 检查本地文件
+    if os.path.exists(music_file_path):
+        return FileResponse(music_file_path, media_type="audio/mp3", filename=f"{id}.mp3")
+
+    # 检查数据库中的文件路径
+    query = songs.select().where(songs.c.SongID == id)
+    song = await database.fetch_one(query)
+
+    if song and song["FilePath"] and os.path.exists(song["FilePath"]):
+        return FileResponse(song["FilePath"], media_type="audio/mp3", filename=f"{id}.mp3")
+
+    # 从外部API获取
+    return await play_music_data_from_api(id, music_file_path)
 
 
-@app.route('/api/playlistInformation', methods=['GET'])
-def get_playlistInformation(pid=0):
-    pid = request.args.get('pid')
-    if pid:
-        try:
-            db = get_db_connection().get_connection()
-            cursor = db.cursor()
-            query = "SELECT * FROM `playlists` WHERE PlaylistID={};".format(pid)
-            print(query)
-            cursor.execute(query)
-            playlists = cursor.fetchall()
-            if playlists:
-                print(playlists)
-                return playlists
-            else:
-                pass
-        except Exception as e:
-            pass
-        finally:
-            cursor.close()
-            db.close()
-    else:
-        pass
-    return abort(404, description="歌单不存在")
-
-
-@app.route('/api/artistDetail', methods=['GET'])
-def api_artistList():
-    uid = request.args.get('uid')
-    if uid:
-        converted_playlist = {"歌曲列表": song_name(uid=uid).json}
-        return converted_playlist
-    else:
-        return 'error', 404
-
-
-@app.route('/topic/detail/event/hot', methods=['GET'])
-def topic_detail_hot_event():
-    actid = request.args.get('actid')
-    # Implementation placeholder
-    return jsonify({'message': 'Topic detail hot events fetched', 'actid': actid})
-
-
-@app.route('/comment/hotwall/list', methods=['GET'])
-def comment_hotwall_list():
-    # Implementation placeholder since officially deprecated
-    return jsonify({'message': 'Cloud Village Hot Comments currently unavailable'})
-
-
-@app.route('/playmode/intelligence/list', methods=['GET'])
-def playmode_intelligence_list():
-    song_id = request.args.get('id')
-    pid = request.args.get('pid')
-    sid = request.args.get('sid', '')
-    # Implementation placeholder
-    return jsonify({'message': 'Heartbeat Mode/Intelligent Play list fetched', 'id': song_id, 'pid': pid, 'sid': sid})
-
-
-@app.route('/event', methods=['GET'])
-def get_events():
-    pagesize = request.args.get('pagesize', 20)
-    lasttime = request.args.get('lasttime', -1)
-    # Implementation placeholder
-    return jsonify({'message': 'Dynamic messages fetched', 'pagesize': pagesize, 'lasttime': lasttime})
-
-
-@app.route('/artist/list', methods=['GET'])
-def artist_list():
-    limit = request.args.get('limit', 30)
-    offset = request.args.get('offset', 0)
-    initial = request.args.get('initial')
-    type = request.args.get('type', -1)
-    area = request.args.get('area', -1)
-    # Implementation placeholder
-    return jsonify(
-        {'message': 'Artist list fetched', 'limit': limit, 'offset': offset, 'initial': initial, 'type': type,
-         'area': area})
-
-
-@app.route('/artist/sub', methods=['POST'])
-def artist_subscribe():
-    artist_id = request.args.get('id')
-    t = request.args.get('t')
-    # Implementation placeholder
-    return jsonify({'message': f'Artist {"subscribed" if t == "1" else "unsubscribed"} successfully', 'id': artist_id})
-
-
-@app.route('/comment', methods=['POST'])
-def comment():
-    data = {"status": "success", "action": request.args.get('t')}
-    return jsonify(data)
-
-
-@app.route('/banner')
-def banner():
-    data = {"banners": ["banner1", "banner2"]}
-    return jsonify(data)
-
-
-@app.route('/resource/like', methods=['POST'])
-def resource_like():
-    data = {"status": "liked" if request.args.get('t') == '1' else "unliked", "id": request.args.get('id')}
-    return jsonify(data)
-
-
-@app.route('/playlist/mylike')
-def mylike():
-    data = {"playlists": []}
-    return jsonify(data)
-
-
-base_dir = os.path.dirname(os.path.abspath(__file__))
-musics_dir = os.path.join(base_dir, 'storage')
-
-
-def file_exists(path):
-    """检查文件是否存在"""
-    return os.path.exists(path)
-
-
-def download_music_file(id, music_file_path):
-    """从外链下载音乐文件并保存到本地"""
-    download_url = f"http://music.163.com/song/media/outer/url?id={id}"
-    try:
-        response = requests.get(download_url, stream=True)
-        response.raise_for_status()  # 检查请求是否成功
-
-        # 创建存储目录（如果不存在）
-        os.makedirs(musics_dir, exist_ok=True)
-
-        # 保存文件到本地
-        with open(music_file_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=1024):
-                f.write(chunk)
-        print('从外链下载并保存了音乐文件:', music_file_path)
-
-        return True
-    except requests.RequestException as e:
-        print('请求外链失败:', e)
-        return False
-
-
-def fetch_song_from_db(db, song_id):
-    """从数据库查找音乐文件路径"""
-    cursor = db.cursor()
-    query = "SELECT FilePath FROM songs WHERE SongID = %s;"
-    cursor.execute(query, (song_id,))
-    return cursor.fetchone()
-
-
-def insert_song_into_db(db, song_id, song_name, song_cover, song_lrc):
-    """将歌曲信息插入到数据库"""
-    cursor = db.cursor()
-    query = """INSERT INTO `songs` (`SongID`, `Title`, `ArtistID`, `AlbumID`, `Genre`,
-                                    `Duration`, `ReleaseDate`, `FilePath`, `CoverImagePath`, `Lyrics`,
-                                    `Language`, `PlayCount`, `CreateTime`, `UpdateTime`)
-               VALUES (%s, %s, '1', '1', '1', NULL, NULL, NULL, %s, %s,
-                       '国语', '0', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);"""
-    try:
-        cursor.execute(query, (song_id, song_name, song_cover, song_lrc))
-    except mysql.connector.Error as err:
-        print('插入歌曲信息时出错:', err)
-        db.rollback()  # 如果插入失败，执行回滚操作
-    else:
-        db.commit()  # 提交事
-
-
-@app.route('/music/<int:id>.mp3')
-def file(id):
-    """处理音乐文件请求"""
-    music_file_path = os.path.join(musics_dir, f"{id}.mp3")
-
-    # 检查本地音乐文件是否存在
-    if file_exists(music_file_path):
-        print('正在请求的是', id)
-        return send_file(music_file_path, mimetype="audio/mp3")
-
-    # 从数据库查找音乐文件路径
-    db = get_db_connection().get_connection()  # 获取连接
-    music_file_path_from_db = fetch_song_from_db(db, id)
-
-    # 检查数据库返回的文件路径
-    if music_file_path_from_db:
-        music_file_path_from_db = music_file_path_from_db[0]
-        if file_exists(music_file_path_from_db):
-            print('正在重新请求的是', id)
-            return send_file(music_file_path_from_db, mimetype="audio/mp3")
-    db.close()  # 确保在函数结束时关闭连接
-    # 如果未找到音乐文件，尝试从外部API获取
-    return play_music_data_from_api(id, music_file_path)  # 将本地路径传递给函数
-
-
-def play_music_data_from_api(song_id, local_file_path):
-    """从API获取音乐数据并保存到本地"""
+async def play_music_data_from_api(song_id: int, local_file_path: str):
     byfuns_url = f"https://www.byfuns.top/api/1/?id={song_id}"
 
     try:
-        # 从API获取音乐的直链
         response = requests.get(byfuns_url)
-
         if response.status_code == 200:
-            music_url = response.text.strip()  # 假设API返回的是直接的音乐链接
+            music_url = response.text.strip()
 
-            # 从音乐链接下载音乐数据
             music_response = requests.get(music_url)
             if music_response.status_code == 200:
-                # 将音乐文件保存到指定位置
+                # 确保目录存在
+                os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+
+                # 保存文件
                 with open(local_file_path, 'wb') as f:
                     f.write(music_response.content)
-                # 返回下载的文件
-                return send_file(local_file_path, mimetype="audio/mp3")
+
+                return FileResponse(local_file_path, media_type="audio/mp3", filename=f"{song_id}.mp3")
             else:
-                print(f"Failed to download the music file from {music_url}. Status Code: {music_response.status_code}")
-                return jsonify({"error": "无法下载音乐文件"}), 500  # 返回500错误，明确告知下载失败
+                raise HTTPException(status_code=500, detail="无法下载音乐文件")
         else:
-            print(f"Failed to get music URL from API. Status Code: {response.status_code}")
-            return jsonify({"error": "无法获取音乐链接"}), 500  # 返回500错误
-
+            raise HTTPException(status_code=500, detail="无法获取音乐链接")
     except Exception as e:
-        print(f"An error occurred: {e}")
-        return jsonify({"error": "发生错误"}), 500
+        raise HTTPException(status_code=500, detail=f"发生错误: {str(e)}")
 
 
-@app.route('/singer/<id>.png')
-def singer_img(id):
+# 封面图片服务
+@app.get("/music_cover/{id}.png")
+async def cover_file(id: int = Path(..., description="歌曲或歌手ID")):
     covers_dir = os.path.join(base_dir, 'cover')
     cover_file_path = os.path.join(covers_dir, f'{id}.png')
 
     if os.path.exists(cover_file_path):
-        return send_file(cover_file_path, mimetype='image/png')
+        return FileResponse(cover_file_path, media_type="image/png")
 
-    cover_file_path1 = get_cover_from_file(id, covers_dir)
-    if cover_file_path1:
-        return send_file(cover_file_path1, mimetype='image/png')
+    if id > 100000:
+        return await get_cover_from_api(id, cover_file_path)
+    else:
+        cover_file_path1 = await get_cover_from_file(id, covers_dir)
+        if cover_file_path1:
+            return FileResponse(cover_file_path1, media_type="image/png")
 
     default_cover_path = os.path.join(covers_dir, '0.png')
-    return send_file(default_cover_path, mimetype='image/png')
+    if os.path.exists(default_cover_path):
+        return FileResponse(default_cover_path, media_type="image/png")
+
+    raise HTTPException(status_code=404, detail="Cover not found")
 
 
-def get_cover_from_api(song_id, local_file_path):
-    """从API获取音乐数据"""
-    song_info = get_song_info(song_id)
+async def get_cover_from_api(song_id: int, local_file_path: str):
+    song_info = await get_song_info(song_id)
+    if 'error' in song_info:
+        raise HTTPException(status_code=404, detail=song_info['error'])
+
     url = song_info['cover']
-
     try:
-        # 从API获取音乐cover
-        music_cover = requests.get(url)
-        if music_cover.status_code == 200:
+        response = requests.get(url)
+        if response.status_code == 200:
+            os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
             with open(local_file_path, 'wb') as f:
-                f.write(music_cover.content)
-            # 返回下载的文件
-            return send_file(local_file_path, mimetype='image/png')
+                f.write(response.content)
+            return FileResponse(local_file_path, media_type="image/png")
         else:
-            print(f"Failed to download the music file from {url}. Status Code: {music_cover.status_code}")
-            return jsonify({"error": "无法下载音乐文件"}), 500  # 返回500错误，明确告知下载失败
+            raise HTTPException(status_code=500, detail="无法下载封面图片")
     except Exception as e:
-        print(f"An error occurred: {e}")
-        return jsonify({"error": "发生错误"}), 500
+        raise HTTPException(status_code=500, detail=f"发生错误: {str(e)}")
 
 
-@app.route('/music_cover/<int:id>.png')
-def cover_file(id):
-    covers_dir = os.path.join(base_dir, 'cover')
-    cover_file_path = os.path.join(covers_dir, f'{id}.png')  # 使用 'id' 作为文件名
+async def get_cover_from_file(id: int, covers_dir: str):
+    cover_file_path = os.path.join(covers_dir, f'{id}.png')
+
     if os.path.exists(cover_file_path):
-        return send_file(cover_file_path, mimetype='image/png')
-    if id > 100000:
-        return get_cover_from_api(id, cover_file_path)
-    else:
-        cover_file_path1 = get_cover_from_file(id, covers_dir)
-        if cover_file_path1:
-            return send_file(cover_file_path1, mimetype='image/png')
+        return cover_file_path
 
-        default_cover_path = os.path.join(covers_dir, '0.png')
-        return send_file(default_cover_path, mimetype='image/png')
+    query = songs.select().where(songs.c.SongID == id)
+    song = await database.fetch_one(query)
+
+    if song and song["FilePath"] and os.path.exists(song["FilePath"]):
+        # 这里需要 mutagen 库来读取MP3文件的封面
+        # 由于mutagen是同步库，可能需要在线程中执行
+        try:
+            from mutagen.mp3 import MP3
+            from mutagen.id3 import ID3, APIC
+
+            audio = MP3(song["FilePath"], ID3=ID3)
+            for tag in audio.tags.values():
+                if isinstance(tag, APIC):
+                    cover_data = tag.data
+                    img = Image.open(BytesIO(cover_data))
+
+                    # 转换为PNG并保存
+                    os.makedirs(covers_dir, exist_ok=True)
+                    img.save(cover_file_path, 'PNG')
+                    return cover_file_path
+        except Exception:
+            pass
+
+    return None
 
 
-def get_song_info(song_id):
+# 歌曲信息
+async def get_song_info(song_id: int):
     cache_file_path = f'temp/info_{song_id}.json'
 
-    # 检查缓存文件是否存在以及是否有效（有效期为三天）
     if os.path.exists(cache_file_path):
         file_mod_time = os.path.getmtime(cache_file_path)
         if time.time() - file_mod_time < 3 * 24 * 60 * 60:  # 三天有效期
             with open(cache_file_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
 
-    # 如果缓存不存在或已过期，发送请求获取数据
     url = f"https://api.paugram.com/netease/?id={song_id}"
-
     try:
         response = requests.get(url)
         response_json = response.json()
 
-        if 'id' in response_json:  # 检查返回的 JSON 是否包含 id
+        if 'id' in response_json:
             song_info = response_json
-            result = {'id': song_info['id'], 'title': song_info['title'], 'artist': song_info['artist'],
-                      'album': song_info['album'], 'cover': song_info['cover'], 'url': song_info['link'],
-                      'lyric': song_info.get('lyric', ''),  # 使用 get 方法以防缺少字段
-                      'sub_lyric': song_info.get('sub_lyric', '')}
+            result = {
+                'id': song_info['id'],
+                'title': song_info['title'],
+                'artist': song_info['artist'],
+                'album': song_info['album'],
+                'cover': song_info['cover'],
+                'url': song_info['link'],
+                'lyric': song_info.get('lyric', ''),
+                'sub_lyric': song_info.get('sub_lyric', '')
+            }
 
-            # 将数据写入缓存文件
-            os.makedirs(os.path.dirname(cache_file_path), exist_ok=True)  # 确保目录存在
+            os.makedirs(os.path.dirname(cache_file_path), exist_ok=True)
             with open(cache_file_path, 'w', encoding='utf-8') as f:
                 json.dump(result, f, ensure_ascii=False, indent=4)
 
             return result
         else:
             return {'error': response_json.get('msg', '未知错误')}
-
     except Exception as e:
         return {'error': str(e)}
 
 
-def get_cover_from_file(id, covers_dir):
-    # 生成封面文件路径
-    cover_file_path = os.path.join(covers_dir, f'{id}.png')
+@app.get("/music_info/{id}")
+async def music_info(id: int):
+    query = """
+            SELECT Title, \
+                   ArtistID, \
+                   AlbumID, \
+                   Genre, \
+                   Duration, \
+                   ReleaseDate,
+                   FilePath, \
+                   Lyrics, Language, PlayCount, CreateTime, UpdateTime
+            FROM songs \
+            WHERE SongID = :song_id \
+            """
+    song_data = await database.fetch_one(query, {"song_id": id})
 
-    # 检查封面文件是否已经存在
-    if os.path.exists(cover_file_path):
-        return cover_file_path
+    if not song_data:
+        raise HTTPException(status_code=404, detail="Song not found")
 
-    # 获取数据库连接
-    db = get_db_connection().get_connection()
-    cursor = db.cursor()
-    query = "SELECT FilePath FROM songs WHERE SongID = %s;"
-
-    # 执行查询并获取结果
-    cursor.execute(query, (id,))
-    song_file_path = cursor.fetchone()
-
-    if song_file_path and song_file_path[0]:  # 确保结果存在并且不是 None
-        song_file_path = song_file_path[0]  # 提取路径字符串
-        if os.path.exists(song_file_path):  # 检查音频文件是否存在
-            audio = MP3(song_file_path, ID3=ID3)
-            for tag in audio.tags.values():
-                if isinstance(tag, APIC):
-                    cover_data = tag.data
-                    cover_mime = tag.mime
-
-                    if cover_mime == 'image/jpeg':  # 如果封面是 JPEG 格式，转换为 PNG 格式
-                        img = Image.open(BytesIO(cover_data))
-                        png_buffer = BytesIO()
-                        img.save(png_buffer, format='PNG')
-                        png_data = png_buffer.getvalue()
-                        with open(cover_file_path, 'wb') as f:
-                            f.write(png_data)
-                        return cover_file_path
-                    elif cover_mime == 'image/png':  # 如果封面已经是 PNG 格式，直接返回
-                        with open(cover_file_path, 'wb') as f:
-                            f.write(cover_data)
-                        return cover_file_path
-
-    return None  # 如果没有找到封面，返回 None
+    return {
+        "id": id,
+        "title": song_data["Title"],
+        "artist": song_data["ArtistID"],
+        "album": song_data["AlbumID"],
+        "genre": song_data["Genre"],
+        "duration": song_data["Duration"],
+        "releaseDate": song_data["ReleaseDate"],
+        "filePath": song_data["FilePath"],
+        "lyrics": song_data["Lyrics"],
+        "language": song_data["Language"],
+        "playCount": song_data["PlayCount"],
+        "createTime": song_data["CreateTime"],
+        "updateTime": song_data["UpdateTime"]
+    }
 
 
-@asynccontextmanager
-async def async_db_connection():
-    db = get_db_connection().get_connection()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-@app.route('/music_info/<int:id>')
-def music_info(id):
-    if id:
-        try:
-            with get_db_connection().get_connection() as db:  # 假设你有一个同步的数据库连接函数 db_connection
-                cursor = db.cursor()
-                query = "SELECT Title, ArtistID, AlbumID, Genre, Duration, ReleaseDate, FilePath, Lyrics, Language, PlayCount, CreateTime, UpdateTime FROM songs WHERE SongID = %s;"
-                cursor.execute(query, (id,))
-                song_data = cursor.fetchone()
-
-                if song_data:
-                    song_info = {
-                        "id": id,
-                        "title": song_data[0],
-                        "artist": song_data[1],
-                        "album": song_data[2],
-                        "genre": song_data[3],
-                        "duration": song_data[4],
-                        "releaseDate": song_data[5],
-                        "filePath": song_data[6],
-                        "lyrics": song_data[7],
-                        "language": song_data[8],
-                        "playCount": song_data[9],
-                        "createTime": song_data[10],
-                        "updateTime": song_data[11]
-                    }
-                    return jsonify(song_info)
-                else:
-                    return jsonify({"error": "Invalid song id"})
-
-        except Exception as e:
-            print(f"Error: {e}")
-            return make_response("An error occurred while retrieving song information.", 500)
-    else:
-        return jsonify({"error": "Invalid song id"})
-
-
-@app.route('/api/lrc/<int:song_id>')
-def get_lrc(song_id):
-    if song_id:
-        try:
-            lrc_file_dir = os.path.join(base_dir, 'lrc', f'{song_id}.lrc')
-            if os.path.exists(lrc_file_dir):
-                return send_file(lrc_file_dir, mimetype='text/plain')
-            with get_db_connection().get_connection() as db:  # 假设你有一个同步的数据库连接函数 db_connection
-                cursor = db.cursor()
-                query = "SELECT Lyrics FROM songs WHERE SongID = %s;"
-                cursor.execute(query, (song_id,))
-                song_lrc = cursor.fetchone()
-
-                if song_lrc and song_lrc[0]:
-                    lrc_filename = f"{song_id}.lrc"
-                    response = make_response(song_lrc[0])
-                    response.headers.set('Content-Disposition', 'attachment', filename=lrc_filename)
-                    response.headers.set('Content-Type', 'text/plain')
-                    return response
-
-                else:
-                    tmp_file_dir = os.path.join(base_dir, 'temp', f'info_{song_id}.json')
-                    with open(tmp_file_dir, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        lrc_content = data['lyric']
-                        save_lyrics(lrc_content, song_id)
-
-                    response = make_response(lrc_content)
-                    response.headers.set('Content-Disposition', 'attachment', filename=f"{song_id}.lrc")
-                    response.headers.set('Content-Type', 'text/plain')
-                    return response
-
-        except Exception as e:
-            print(f"Error: {e}")
-            return make_response(f"An error occurred while retrieving lyrics: {str(e)}", 500)
-
-
-def save_lyrics(lyrics, song_id):
+# 歌词服务
+@app.get("/api/lrc/{song_id}")
+async def get_lrc(song_id: int):
     lrc_file_dir = os.path.join(base_dir, 'lrc', f'{song_id}.lrc')
+
+    if os.path.exists(lrc_file_dir):
+        return FileResponse(lrc_file_dir, media_type="text/plain")
+
+    query = songs.select().where(songs.c.SongID == song_id)
+    song = await database.fetch_one(query)
+
+    if song and song["Lyrics"]:
+        # 保存到文件以便下次使用
+        os.makedirs(os.path.dirname(lrc_file_dir), exist_ok=True)
+        with open(lrc_file_dir, 'w', encoding='utf-8') as f:
+            f.write(song["Lyrics"])
+
+        return Response(content=song["Lyrics"], media_type="text/plain")
+
+    # 从缓存获取
+    tmp_file_dir = os.path.join(base_dir, 'temp', f'info_{song_id}.json')
+    if os.path.exists(tmp_file_dir):
+        with open(tmp_file_dir, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            lrc_content = data.get('lyric', '')
+            if lrc_content:
+                await save_lyrics(lrc_content, song_id)
+                return Response(content=lrc_content, media_type="text/plain")
+
+    raise HTTPException(status_code=404, detail="Lyrics not found")
+
+
+async def save_lyrics(lyrics: str, song_id: int):
+    lrc_file_dir = os.path.join(base_dir, 'lrc', f'{song_id}.lrc')
+    os.makedirs(os.path.dirname(lrc_file_dir), exist_ok=True)
     with open(lrc_file_dir, 'w', encoding='utf-8') as f:
         f.write(lyrics)
 
 
-def song_name_list(ids):
-    if ids:
-        db = get_db_connection().get_connection()
-        cursor = db.cursor()
-        try:
-            print(ids)
-            query = "SELECT songs.SongID, songs.Title, artists.Name FROM songs JOIN artists ON songs.ArtistID = artists.ArtistID WHERE songs.SongID IN ({})".format(
-                ids)
-
-            cursor.execute(query)
-            song_data = cursor.fetchall()
-            print(song_data)
-            return song_data
-        except Exception as e:
-            return 'error', 404
-        finally:
-            cursor.close()
-            db.close()
-
-
-@app.route('/song/name/', methods=['GET'])
-def song_name(id=0, pid=0, uid=0):
-    id = request.args.get('id')
-    pid = request.args.get('pid')
+# 歌曲名称查询
+@app.get("/song/name/")
+async def song_name(
+        id: Optional[str] = Query(None, description="歌曲ID列表(逗号分隔)"),
+        pid: Optional[int] = Query(None, description="播放列表ID"),
+        uid: Optional[int] = Query(None, description="用户ID")
+):
     if id and not pid:
-        song_data = song_name_list(id)
-        return jsonify(song_data)
-    if pid:
-        db = get_db_connection().get_connection()
-        cursor = db.cursor()
-        try:
-            query = "SELECT SongID FROM `playlist_songs` WHERE PlayListID = {}".format(pid)
-            print(query)
-            cursor.execute(query)
-            list_data = cursor.fetchall()
-            playlist = []
-            for i in list_data:
-                playlist.append(i[0])
-            print(playlist)
-            str_list = ','.join(str(x) for x in playlist)
-            playlist_back = song_name_list(str_list)
-            return jsonify(playlist_back)
-        except Exception as e:
-            return 'error', 404
-        finally:
-            cursor.close()
-            db.close()
-    if uid and not pid and not id:
-        db = get_db_connection().get_connection()
-        cursor = db.cursor()
-        try:
-            query = "SELECT songs.SongID, songs.Title, artists.Name FROM songs JOIN artists ON songs.ArtistID = artists.ArtistID WHERE songs.ArtistID = {};".format(
-                uid)
-            cursor.execute(query)
-            song_data = cursor.fetchall()
-            return jsonify(song_data)
-        except Exception as e:
-            return 'error', 404
-        finally:
-            cursor.close()
-            db.close()
-
+        song_data = await song_name_list(id)
+        return song_data
+    elif pid:
+        return await get_playlist_songs(pid)
+    elif uid and not pid and not id:
+        return await get_artist_songs(uid)
     else:
-        return jsonify({"error": "Invalid song id"})
-
-
-@app.route('/album', methods=['GET'])
-def album():
-    album_id = request.args.get('id')
-    data = {"id": album_id, "name": "Album " + album_id, "songs": []}
-    return jsonify(data)
-
-
-@app.route('/album/detail/dynamic')
-def album_detail_dynamic():
-    album_id = request.args.get('id')
-    data = {"id": album_id, "likeCount": 100, "commentCount": 50}
-    return jsonify(data)
-
-
-@app.route('/album/sub', methods=['POST'])
-def album_sub():
-    action = "Subscribed" if request.args.get('t') == '1' else "Unsubscribed"
-    data = {"status": action}
-    return jsonify(data)
-
-
-@app.route('/album/sublist')
-def album_sublist():
-    data = {"albums": []}
-    return jsonify(data)
-
-
-@app.route('/artists')
-def artists():
-    artist_id = request.args.get('id')
-    data = {"artist": {"id": artist_id, "name": "Artist " + artist_id}, "songs": []  # 示例热门歌曲数据
-            }
-    return jsonify(data)
-
-
-@app.route('/artist/mv')
-def artist_mv():
-    data = {"mvs": []  # 示例MV数据
-            }
-    return jsonify(data)
-
-
-@app.route('/artist/album')
-def artist_album():
-    data = {"albums": []}
-    return jsonify(data)
-
-
-@app.route('/artist/desc')
-def artist_desc():
-    artist_id = request.args.get('id')
-    data = {"description": "Description for artist " + artist_id}
-    return jsonify(data)
-
-
-@app.route('/artist/detail')
-def artist_detail():
-    artist_id = request.args.get('id')
-    data = {"artist": {"id": artist_id, "name": "Artist " + artist_id, "detail": "Some details here"}}
-    return jsonify(data)
-
-
-@app.route('/simi/artist')
-def simi_artist():
-    artist_id = request.args.get('id')
-    data = {"similarArtists": []}
-    return jsonify(data)
-
-
-@app.route('/simi/playlist')
-def simi_playlist():
-    song_id = request.args.get('id')
-    data = {"playlists": []}
-    return jsonify(data)
-
-
-@app.route('/recommend/resource')
-def recommend_resource():
-    data = {"playlists": [{"id": 1, "name": "Playlist 1"}, {"id": 2, "name": "Playlist 2"}, ]}
-    return jsonify(data)
-
-
-@app.route('/recommend/songs')
-def recommend_songs():
-    data = {"songs": [{"id": 1, "name": "Song 1"}, {"id": 2, "name": "Song 2"}, ]}
-    return jsonify(data)
-
-
-@app.route('/recommend/songs/dislike', methods=['POST'])
-def dislike_song():
-    song_id = request.args.get('id')
-    data = {"status": "success", "message": f"Disliked song with ID{song_id}"}
-    return jsonify(data)
-
-
-@app.route('/history/recommend/songs')
-def history_recommend_songs():
-    data = {"dates": ["2020-06-21", "2020-06-20"]}
-    return jsonify(data)
-
-
-@app.route('/history/recommend/songs/detail')
-def history_recommend_songs_detail():
-    date = request.args.get('date')
-    data = {"date": date, "songs": [{"id": 1, "name": "Historical Song 1"}, {"id": 2, "name": "Historical Song 2"}, ]}
-    return jsonify(data)
-
-
-@app.route('/personal_fm')
-def personal_fm():
-    data = {"tracks": [{"id": 1, "name": "Personal FM Track 1"}, {"id": 2, "name": "Personal FM Track 2"}, ]}
-    return jsonify(data)
-
-
-@app.route('/daily_signin', methods=['POST'])
-def daily_signin():
-    signin_type = request.args.get('type', '0')
-    data = {"status": "success", "message": f"Signed in using method {signin_type}"}
-    return jsonify(data)
-
-
-@app.route('/like', methods=['POST'])
-def like_song():
-    song_id = request.args.get('id')
-    like_status = request.args.get('like', True)
-    action = "Liked" if like_status else "Unliked"
-    data = {"status": "success", "message": f"{action} song with ID {song_id}"}
-    return jsonify(data)
-
-
-@app.route('/likelist')
-def like_list():
-    user_id = request.args.get('uid')
-    data = {"user_id": user_id, "liked_songs": [{"id": 1}, {"id": 2}]}
-    return jsonify(data)
-
-
-@app.route('/fm_trash', methods=['POST'])
-def fm_trash():
-    song_id = request.args.get('id')
-    data = {"status": "success", "message": f"Moved song with ID {song_id} to trash"}
-    return jsonify(data)
-
-
-@app.route('/top/album')
-def top_album():
-    # 这里仅为例子，实际参数处理可以更复杂
-    year = request.args.get('year', '2021')
-    month = request.args.get('month', '01')
-    data = {"year": year, "month": month,
-            "albums": [{"id": 1, "name": "Top Album 1"}, {"id": 2, "name": "Top Album 2"}]}
-    return jsonify(data)
-
-
-@app.route('/mv/all')
-def mv_all():
-    area = request.args.get('area', '全部')
-    data = {"area": area, "mvs": [{"id": 1, "name": "MV 1"}, {"id": 2, "name": "MV 2"}]}
-    return jsonify(data)
-
-
-@app.route('/mv/first')
-def mv_first():
-    limit = request.args.get('limit', 30)
-    data = {"limit": limit, "new_mvs": [{"id": 1, "name": "New MV 1"}, {"id": 2, "name": "New MV 2"}]}
-    return jsonify(data)
-
-
-@app.route('/mv/exclusive/rcmd')
-def mv_exclusive_rcmd():
-    limit = request.args.get('limit', 30)
-    data = {"limit": limit, "exclusive_mvs": [{"id": 1, "name": "Exclusive MV 1"}, {"id": 2, "name": "Exclusive MV 2"}]}
-    return jsonify(data)
-
-
-@app.route('/personalized/mv')
-def personalized_mv():
-    data = {"recommend_mvs": [{"id": 1, "name": "Recommended MV 1"}, {"id": 2, "name": "Recommended MV 2"}]}
-    return jsonify(data)
-
-
-@app.route('/vip/growthpoint', methods=['GET'])
-def get_vip_growthpoint():
-    # 逻辑实现部分
-    return jsonify({'message': '获取当前会员成长值'})
-
-
-@app.route('/vip/growthpoint/details', methods=['GET'])
-def get_vip_growthpoint_details():
-    limit = request.args.get('limit', 20)
-    offset = request.args.get('offset', 0)
-    # 逻辑实现部分
-    return jsonify({'message': '获取会员成长值领取记录'})
-
-
-@app.route('/vip/tasks', methods=['GET'])
-def get_vip_tasks():
-    # 逻辑实现部分
-    return jsonify({'message': '获取会员任务'})
-
-
-@app.route('/vip/growthpoint/get', methods=['GET'])
-def get_vip_growthpoint_rewards():
-    ids = request.args.get('ids')
-    # 逻辑实现部分
-    return jsonify({'message': '获取已完成的会员任务的成长值奖励'})
-
-
-@app.route('/artist/fans', methods=['GET'])
-def get_artist_fans():
-    artist_id = request.args.get('id')
-    limit = request.args.get('limit', 10)
-    offset = request.args.get('offset', 0)
-    # 逻辑实现部分
-    return jsonify({'message': '获取歌手粉丝'})
-
-
-@app.route('/artist/follow/count', methods=['GET'])
-def get_artist_fans_count():
-    artist_id = request.args.get('id')
-    # 逻辑实现部分
-    return jsonify({'message': '获取歌手粉丝数量'})
-
-
-@app.route('/digitalAlbum/detail', methods=['GET'])
-def get_digital_album_detail():
-    album_id = request.args.get('id')
-    # 逻辑实现部分
-    return jsonify({'message': '获取数字专辑信息'})
-
-
-@app.route('/digitalAlbum/sales', methods=['GET'])
-def get_digital_album_sales():
-    ids = request.args.get('ids')
-    # 逻辑实现部分
-    return jsonify({'message': '获取数字专辑销量'})
-
-
-@app.route('/msg/private', methods=['GET'])
-def get_private_messages():
-    limit = request.args.get('limit', 30)
-    offset = request.args.get('offset', 0)
-    # 逻辑实现部分
-    return jsonify({'message': '获取私信'})
-
-
-@app.route('/send/text', methods=['GET', 'POST'])
-def send_text_message():
-    user_ids = request.args.get('user_ids')
-    msg = request.args.get('msg')
-    # 逻辑实现部分
-    return jsonify({'message': '发送文本私信'})
-
-
-@app.route('/send/song', methods=['POST'])
-def send_song_message():
-    user_ids = request.form.get('user_ids')
-    song_id = request.form.get('id')
-    msg = request.form.get('msg')
-    # 逻辑实现部分
-    return jsonify({'message': '发送音乐私信'})
-
-
-@app.route('/send/album', methods=['POST'])
-def send_album_message():
-    user_ids = request.form.get('user_ids')
-    album_id = request.form.get('id')
-    msg = request.form.get('msg')
-    # 逻辑实现部分
-    return jsonify({'message': '发送专辑私信'})
-
-
-@app.route('/send/playlist', methods=['POST'])
-def send_playlist_message():
-    user_ids = request.form.get('user_ids')
-    playlist_id = request.form.get('playlist')
-    msg = request.form.get('msg')
-    # 逻辑实现部分
-    return jsonify({'message': '发送带歌单的私信'})
-
-
-@app.route('/msg/recentcontact', methods=['GET'])
-def get_recent_contact():
-    # 逻辑实现部分
-    return jsonify({'message': '获取最近联系人'})
-
-
-@app.route('/msg/private/history', methods=['GET'])
-def get_private_message_history():
-    uid = request.args.get('uid')
-    # 逻辑实现部分
-    return jsonify({'message': '获取私信内容'})
-
-
-@app.route('/msg/comments', methods=['GET'])
-def get_comments():
-    uid = request.args.get('uid')
-    # 逻辑实现部分
-    return jsonify({'message': '获取评论'})
-
-
-@app.route('/msg/forwards', methods=['GET'])
-def get_at_me():
-    # 逻辑实现部分
-    return jsonify({'message': '获取@我数据'})
-
-
-@app.route('/msg/notices', methods=['GET'])
-def get_notices():
-    # 逻辑实现部分
-    return jsonify({'message': '获取通知'})
-
-
-@app.route('/setting', methods=['GET'])
-def get_user_settings():
-    # 逻辑实现部分
-    return jsonify({'message': '获取用户设置'})
-
-
-if __name__ == '__main__':
-    test_database_connection()
-    app.run(debug=True, port=10086)
+        raise HTTPException(status_code=400, detail="Invalid parameters")
+
+
+async def song_name_list(ids: str):
+    try:
+        query = f"""
+        SELECT songs.SongID, songs.Title, artists.Name 
+        FROM songs 
+        JOIN artists ON songs.ArtistID = artists.ArtistID 
+        WHERE songs.SongID IN ({ids})
+        """
+        results = await database.fetch_all(query)
+        return [dict(row) for row in results]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def get_playlist_songs(pid: int):
+    try:
+        # 首先获取播放列表中的歌曲ID
+        query = "SELECT SongID FROM playlist_songs WHERE PlayListID = :playlist_id"
+        list_data = await database.fetch_all(query, {"playlist_id": pid})
+
+        if not list_data:
+            return []
+
+        song_ids = [str(row["SongID"]) for row in list_data]
+        str_list = ','.join(song_ids)
+
+        return await song_name_list(str_list)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def get_artist_songs(uid: int):
+    try:
+        query = """
+                SELECT songs.SongID, songs.Title, artists.Name
+                FROM songs
+                         JOIN artists ON songs.ArtistID = artists.ArtistID
+                WHERE songs.ArtistID = :artist_id \
+                """
+        results = await database.fetch_all(query, {"artist_id": uid})
+        return [dict(row) for row in results]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 排行榜
+@app.get("/api/toplist")
+async def api_topLists():
+    try:
+        query = "SELECT TargetID FROM hot WHERE Type = 'SONG'"
+        results = await database.fetch_all(query)
+
+        if not results:
+            return []
+
+        hot_id_list = [str(row["TargetID"]) for row in results]
+        str_list = ','.join(hot_id_list)
+
+        return await song_name_list(str_list)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 专辑相关
+@app.get("/api/album")
+async def api_album():
+    try:
+        query = "SELECT AlbumID, Title, ReleaseDate FROM albums"
+        results = await database.fetch_all(query)
+        return [dict(row) for row in results]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 其他兼容性端点（保持与原有API的兼容）
+@app.get("/login/cellphone")
+async def login_cellphone(
+        phone: str = Query(..., description="手机号"),
+        password: Optional[str] = Query(None, description="密码"),
+        md5_password: Optional[str] = Query(None, description="MD5加密密码"),
+        captcha: Optional[str] = Query(None, description="验证码"),
+        countrycode: str = Query("86", description="国家代码")
+):
+    return {
+        "message": "登录成功",
+        "phone": phone,
+        "countrycode": countrycode
+    }
+
+
+@app.get("/login/qr/key")
+async def login_qr_key():
+    login_key = str(uuid.uuid4())
+    login_url = f"{domain}login/callback?key={login_key}"
+    return {"code": "200", "key": login_key, "qr_url": ''}
+
+
+@app.get("/login/qr/check")
+async def login_qr_check(key: str = Query(..., description="二维码key")):
+    return {
+        "message": "二维码扫描状态检查",
+        "key": key,
+        "status": "803"
+    }
+
+
+@app.get("/register/anonimous")
+async def register_anonimous():
+    return {
+        "message": "游客登录成功",
+        "cookie": "anonimous_cookie"
+    }
+
+
+# 更多兼容端点...
+@app.get("/banner")
+async def banner():
+    return {"banners": ["banner1", "banner2"]}
+
+
+@app.get("/personalized/mv")
+async def personalized_mv():
+    return {
+        "recommend_mvs": [
+            {"id": 1, "name": "Recommended MV 1"},
+            {"id": 2, "name": "Recommended MV 2"}
+        ]
+    }
+
+
+@app.post("/like")
+async def like_song(
+        id: int = Query(..., description="歌曲ID"),
+        like: bool = Query(True, description="喜欢状态")
+):
+    action = "Liked" if like else "Unliked"
+    return {
+        "status": "success",
+        "message": f"{action} song with ID {id}"
+    }
+
+
+# 健康检查
+@app.get("/health")
+async def health_check():
+    try:
+        # 测试数据库连接
+        await database.execute("SELECT 1")
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Service unhealthy: {str(e)}"
+        )
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=10086,
+        reload=True,
+        log_level="info"
+    )
