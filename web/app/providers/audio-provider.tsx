@@ -276,7 +276,6 @@ export function AudioProvider({children}: { children: React.ReactNode }) {
                     setMusicId(newMusicId)
                     audio.pause()
                     audio.src = `${API_URL}/music/${newMusicId}.mp3`
-
                     const handleCanPlay = () => {
                         audio.play().then(() => {
                             setPlaying(true)

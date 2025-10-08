@@ -13,10 +13,9 @@ interface LyricsLine {
 
 interface SongDetailProps {
     musicId: string
-    audioElementId?: string // 可选的audio元素ID
 }
 
-function SongDetail({musicId, audioElementId = "audio-player"}: SongDetailProps) {
+function SongDetail({musicId}: SongDetailProps) {
     const [lyricsData, setLyricsData] = useState<LyricsLine[]>([])
     const [musicName, setMusicName] = useState<string>("")
     const [musicArtist, setMusicArtist] = useState<string>("")
@@ -25,35 +24,70 @@ function SongDetail({musicId, audioElementId = "audio-player"}: SongDetailProps)
     const [isPlaying, setIsPlaying] = useState(false)
 
     const animationFrameRef = useRef<number>()
-    const audioElementRef = useRef<HTMLAudioElement | null>(null)
     const lyricsContainerRef = useRef<HTMLDivElement>(null)
 
-    // 监听全局音频事件
+    // 获取全局音频元素的引用
+    const getAudioElement = (): HTMLAudioElement | null => {
+        // 尝试多种方式获取音频元素
+        const selectors = [
+            'audio',
+            '#audio-player',
+            '[data-audio-element]',
+            'audio[src]'
+        ];
+
+        for (const selector of selectors) {
+            const element = document.querySelector(selector) as HTMLAudioElement;
+            if (element) return element;
+        }
+
+        return null;
+    }
+
     useEffect(() => {
-        const handleAudioTimeUpdate = (event: CustomEvent) => {
-            setCurrentTime(event.detail.currentTime)
-            setIsPlaying(event.detail.isPlaying)
+        if (isPlaying) {
+            const updateTime = () => {
+                const audioElement = getAudioElement();
+                if (audioElement) {
+                    setCurrentTime(audioElement.currentTime);
+                }
+                animationFrameRef.current = requestAnimationFrame(updateTime);
+            };
+            animationFrameRef.current = requestAnimationFrame(updateTime);
+        } else {
+            if (animationFrameRef.current) {
+                cancelAnimationFrame(animationFrameRef.current);
+            }
         }
-
-        const handleAudioPlayState = (event: CustomEvent) => {
-            setIsPlaying(event.detail)
-        }
-
-        // 监听自定义事件
-        window.addEventListener('audioTimeUpdate', handleAudioTimeUpdate as EventListener)
-        window.addEventListener('audioPlayState', handleAudioPlayState as EventListener)
-
         return () => {
-            window.removeEventListener('audioTimeUpdate', handleAudioTimeUpdate as EventListener)
-            window.removeEventListener('audioPlayState', handleAudioPlayState as EventListener)
-        }
-    }, [])
+            if (animationFrameRef.current) {
+                cancelAnimationFrame(animationFrameRef.current);
+            }
+        };
+    }, [isPlaying])
 
-    // 动画循环更新当前时间（更平滑的更新）
+    useEffect(() => {
+        const audioElement = getAudioElement();
+        if (!audioElement) return;
+
+        const handleTimeUpdate = () => {
+            if (!isPlaying) {
+                setCurrentTime(audioElement.currentTime);
+            }
+        };
+
+        audioElement.addEventListener('timeupdate', handleTimeUpdate);
+        return () => {
+            audioElement.removeEventListener('timeupdate', handleTimeUpdate);
+        };
+    }, [isPlaying]);
+
+    // 动画循环更新当前时间
     useEffect(() => {
         const updateTime = () => {
-            if (audioElementRef.current) {
-                setCurrentTime(audioElementRef.current.currentTime)
+            const audioElement = getAudioElement();
+            if (audioElement) {
+                setCurrentTime(audioElement.currentTime)
             }
             animationFrameRef.current = requestAnimationFrame(updateTime)
         }
@@ -69,6 +103,7 @@ function SongDetail({musicId, audioElementId = "audio-player"}: SongDetailProps)
         }
     }, [isPlaying])
 
+    // 其他 useEffect 保持不变...
     useEffect(() => {
         const fetchSongDetails = async () => {
             try {
@@ -271,6 +306,9 @@ function SongDetail({musicId, audioElementId = "audio-player"}: SongDetailProps)
         )
     }
 
+    // 检查是否有音频元素
+    const hasAudioElement = !!getAudioElement();
+
     // 加载状态
     if (isLoading) {
         return (
@@ -326,7 +364,7 @@ function SongDetail({musicId, audioElementId = "audio-player"}: SongDetailProps)
             </div>
 
             {/* 音频状态提示 */}
-            {!audioElementRef.current && (
+            {!hasAudioElement && (
                 <div className="text-center text-orange-500 text-sm bg-orange-50 py-2 rounded-lg">
                     未检测到音频播放器，歌词将不会自动滚动
                 </div>
